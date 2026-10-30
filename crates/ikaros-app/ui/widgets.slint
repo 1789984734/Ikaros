@@ -31,8 +31,10 @@ export component NavItem inherits Rectangle {
         }
 
         if root.glyph.width == 0: Text {
+            width: 20px;
             text: root.icon;
             font-size: 16px;
+            horizontal-alignment: center;
             vertical-alignment: center;
         }
 
