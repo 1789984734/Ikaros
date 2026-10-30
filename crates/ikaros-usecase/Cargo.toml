@@ -1,0 +1,11 @@
+[package]
+name = "ikaros-usecase"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ikaros-domain = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

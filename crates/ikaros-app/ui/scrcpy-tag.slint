@@ -1,0 +1,83 @@
+export component ArgTag inherits Rectangle {
+    in property <string> label;
+    in property <string> description;
+    in property <bool> selected;
+    callback toggle();
+    callback remove();
+    private property <bool> has-descender: root.label
+        .replace-all("g", "").replace-all("j", "").replace-all("p", "")
+        .replace-all("q", "").replace-all("y", "").replace-all("_", "")
+        .replace-all(",", "").replace-all(";", "") != root.label;
+
+    height: 28px;
+    preferred-width: label-text.preferred-width + 49px;
+    horizontal-stretch: 0;
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: root.selected ? #4f80ff : #313548;
+    background: root.selected ? #33415e : (label-touch.has-hover ? #2d3246 : #232737);
+    animate background { duration: 150ms; }
+    animate border-color { duration: 150ms; }
+
+    // Position both hit areas against the tag height, independently of layout sizing.
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: parent.width - 29px;
+        height: parent.height;
+        accessible-role: button;
+        accessible-label: root.label;
+        accessible-action-default => { root.toggle(); }
+
+        label-text := Text {
+            x: 12px;
+            // Trim the unused descender space for labels such as -Sw and --no-audio.
+            y: (parent.height - self.height) / 2 + (root.has-descender ? 0px : 1.5px);
+            width: parent.width - 16px;
+            height: self.preferred-height;
+            text: root.label;
+            font-size: 12px;
+            vertical-alignment: center;
+            color: root.selected ? #cfe0ff : #a0a5b8;
+            accessible-role: none;
+        }
+
+        label-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.toggle(); }
+        }
+
+        Tooltip {
+            text: @markdown("\{root.description}");
+        }
+    }
+
+    Rectangle {
+        x: parent.width - self.width - 3px;
+        y: (parent.height - self.height) / 2;
+        width: 26px;
+        height: 24px;
+        border-radius: 12px;
+        background: close-touch.has-hover ? #593342 : transparent;
+        accessible-role: button;
+        accessible-label: "删除参数 " + root.label;
+        accessible-action-default => { root.remove(); }
+
+        Image {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 12px;
+            height: 12px;
+            source: @image-url("icons/close.svg");
+            colorize: close-touch.has-hover ? #ff9292 : #a0a5b8;
+            accessible-role: none;
+        }
+
+        close-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.remove(); }
+        }
+
+        Tooltip { text: @markdown("删除保存的参数"); }
+    }
+}

@@ -1,0 +1,10 @@
+[package]
+name = "ikaros-domain"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

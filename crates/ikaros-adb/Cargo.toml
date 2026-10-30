@@ -1,0 +1,16 @@
+[package]
+name = "ikaros-adb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ikaros-domain = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.23"
+tempfile = "3"

@@ -1,0 +1,71 @@
+import { Button, LineEdit } from "std-widgets.slint";
+import { App } from "app_state.slint";
+
+export component SettingsTab inherits VerticalLayout {
+    spacing: 12px;
+
+    Text {
+        text: "外部投屏程序 (scrcpy)";
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        LineEdit {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            preferred-width: 0px;
+            text <=> App.scrcpy_path;
+            placeholder-text: "输入 scrcpy 可执行文件所在目录";
+            edited => { App.scrcpy_path_changed(); }
+        }
+
+        Button {
+            text: "浏览…";
+            clicked => { App.browse_scrcpy_path(); }
+        }
+    }
+
+    Text {
+        text: "路径修改后立即保存，重启应用自动恢复；投屏页的参数 Tag 单独保存在 scrcpy_tags.json";
+        font-size: 11px;
+        color: #72778f;
+    }
+
+    Text {
+        text: "Logcat 本地记录";
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        Text {
+            text: "保存目录: " + App.log_recording_directory;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            overflow: elide;
+            font-size: 12px;
+            color: #a0a5b8;
+            vertical-alignment: center;
+        }
+
+        Button {
+            text: "打开文件夹";
+            clicked => { App.open_log_recording_directory(); }
+        }
+    }
+
+    Text {
+        text: "无线调试入口位于「设备概览」页底部；快捷工具（截图/录屏/Bug 报告）产物统一保存在 ~/Downloads/Ikaros/";
+        font-size: 11px;
+        color: #72778f;
+    }
+
+    Rectangle { }
+}

@@ -1,0 +1,158 @@
+import { Button, CheckBox } from "std-widgets.slint";
+import { App } from "app_state.slint";
+import { LogcatView } from "logcat.slint";
+import { LogSearch } from "log-search.slint";
+
+export component LogcatTab inherits VerticalLayout {
+    spacing: 10px;
+
+    // 顶部过滤工具条
+    HorizontalLayout {
+        spacing: 8px;
+
+        Button {
+            text: App.is_logcat_active ? "⏸️ 暂停抓取" : "▶️ 实时抓取";
+            clicked => { App.toggle_logcat(); }
+        }
+
+        Button {
+            text: "🗑️ 清空";
+            clicked => { App.clear_logcat_view(); }
+        }
+
+        Button {
+            text: "💾 导出筛选结果";
+            clicked => { App.export_filtered_logs(); }
+        }
+
+        Rectangle { width: 1px; background: #33384c; }
+
+        Button {
+            text: (App.log_level_selected == 0) ? "[全部]" : "全部";
+            clicked => { App.log_level_selected = 0; App.filter_log_level(0); }
+        }
+        Button {
+            text: (App.log_level_selected == 1) ? "[V]" : "V";
+            clicked => { App.log_level_selected = 1; App.filter_log_level(1); }
+        }
+        Button {
+            text: (App.log_level_selected == 2) ? "[D]" : "D";
+            clicked => { App.log_level_selected = 2; App.filter_log_level(2); }
+        }
+        Button {
+            text: (App.log_level_selected == 3) ? "[I]" : "I";
+            clicked => { App.log_level_selected = 3; App.filter_log_level(3); }
+        }
+        Button {
+            text: (App.log_level_selected == 4) ? "[W]" : "W";
+            clicked => { App.log_level_selected = 4; App.filter_log_level(4); }
+        }
+        Button {
+            text: (App.log_level_selected == 5) ? "[E]" : "E";
+            clicked => { App.log_level_selected = 5; App.filter_log_level(5); }
+        }
+
+        Rectangle { } // 占位
+    }
+
+    LogSearch {
+        z: 1;
+        query: App.log_search_query;
+        complete(query, cursor) => { App.complete_log_filter(query, cursor) }
+        edited(query) => { App.search_logs(query); }
+    }
+
+    // 日志输出视口
+    Rectangle {
+        background: #11121a;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: #2b2e40;
+
+        VerticalLayout {
+            log_list := LogcatView {
+                entries: App.log_items;
+                selection: App.log_selection;
+                selection-count: App.log_selection_count;
+                show-package: App.log_show_package;
+                show-level: App.log_level_selected == 0;
+                show-tag: App.log_show_tag;
+                add-filter(field, value) => { App.add_log_filter(field, value); }
+                select(index, shift, additive, context) => { App.select_log(index, shift, additive, context); }
+                drag-select(index) => { App.drag_select_log(index); }
+                copy-selected(contents-only) => { App.copy_selected_logs(contents-only); }
+                select-all => { App.select_all_logs(); }
+                clear-selection => { App.clear_log_selection(); }
+                wrap-lines: App.log_word_wrap;
+                follow-latest <=> App.follow_latest_logs;
+                copy(text) => { App.copy_clipboard(text); }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+
+        CheckBox {
+            text: "自动换行";
+            checked <=> App.log_word_wrap;
+        }
+
+        Text {
+            text: App.follow_latest_logs ? "正在跟随最新日志"
+                : App.log_updates_pending ? "阅读已锁定 · 有新日志" : "当前阅读位置已锁定";
+            width: 150px;
+            font-size: 12px;
+            overflow: elide;
+            color: App.follow_latest_logs ? #50fa7b : #8b92ab;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: App.log_selection_count > 0
+                ? "已选中 " + App.log_selection_count + " 条 · Ctrl/⌘+C 复制"
+                : "拖选 / Shift 连选 / Ctrl 或 ⌘ 多选";
+            font-size: 11px;
+            color: #8b92ab;
+            vertical-alignment: center;
+            min-width: 0px;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+
+        Button {
+            width: 160px;
+            text: App.follow_latest_logs ? "↓ 滚动到底部" : "↓ 回到最新并跟随";
+            clicked => {
+                App.follow_latest_logs = true;
+                log_list.scroll_to_bottom();
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+
+        CheckBox {
+            text: "同步保存到本地";
+            checked <=> App.is_log_recording_enabled;
+            enabled: !App.is_log_recording_busy;
+            toggled => { App.set_log_recording(self.checked); }
+        }
+
+        Text {
+            text: App.log_recording_message;
+            font-size: 12px;
+            color: App.log_recording_has_error ? #ff5555 : #8b92ab;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+
+        Button {
+            text: "打开日志文件夹";
+            enabled: App.is_log_recording_enabled && !App.is_log_recording_busy;
+            clicked => { App.open_log_recording_directory(); }
+        }
+    }
+}

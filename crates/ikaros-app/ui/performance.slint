@@ -1,0 +1,199 @@
+import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct PerformanceMetric {
+    title: string,
+    value: string,
+    detail: string,
+}
+
+export struct PerformanceChart {
+    title: string,
+    upper_label: string,
+    commands: string,
+    accent: color,
+}
+
+component MetricCard inherits Rectangle {
+    in property <PerformanceMetric> metric;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 0px;
+    height: 88px;
+    background: #232737;
+    border-radius: 8px;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 5px;
+        Text { text: root.metric.title; color: #939bb4; font-size: 11px; overflow: elide; }
+        Text { text: root.metric.value; color: #ffffff; font-size: 19px; font-weight: 600; overflow: elide; }
+        Text { text: root.metric.detail; color: #747e99; font-size: 10px; overflow: elide; }
+    }
+}
+
+component TrendChart inherits Rectangle {
+    in property <PerformanceChart> chart;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 0px;
+    height: 154px;
+    background: #202432;
+    border-radius: 8px;
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        HorizontalLayout {
+            Text { text: root.chart.title; color: #b9c2d9; font-size: 11px; }
+            Rectangle { }
+            Text { text: root.chart.upper_label; color: #747e99; font-size: 10px; }
+        }
+        plot := Rectangle {
+            clip: true;
+            for fraction in [0.0, 0.5, 1.0]: Rectangle {
+                y: fraction * (parent.height - 1px);
+                height: 1px;
+                background: #2c3245;
+            }
+            Path {
+                width: plot.width;
+                height: plot.height;
+                viewbox-width: 100;
+                viewbox-height: 100;
+                fit: fill;
+                commands: root.chart.commands;
+                fill: transparent;
+                stroke: root.chart.accent;
+                stroke-width: 1.5px;
+            }
+            if root.chart.commands == "": Text {
+                text: "等待有效采样";
+                color: #68728e;
+                font-size: 11px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            Text { text: "较早"; color: #68728e; font-size: 10px; }
+            Rectangle { }
+            Text { text: "最新"; color: #68728e; font-size: 10px; }
+        }
+    }
+}
+
+export component PerformancePanel inherits Rectangle {
+    in property <bool> has_device;
+    in property <bool> running;
+    in property <bool> has_error;
+    in property <string> message;
+    in property <string> sample_status;
+    in property <[string]> packages;
+    in property <[string]> package_labels;
+    in-out property <int> selected_index;
+    in property <string> package;
+    in property <string> app_status;
+    in property <[PerformanceMetric]> device_metrics;
+    in property <[PerformanceMetric]> app_metrics;
+    in property <[PerformanceChart]> charts;
+    in property <bool> can_export: false;
+    private property <string> package_draft: root.package;
+    changed package => { root.package_draft = root.package; }
+    callback toggle();
+    callback select_package(string);
+    callback export_csv();
+
+    VerticalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 12px;
+            Text { text: "性能监控"; color: #ffffff; font-size: 17px; font-weight: 600; vertical-alignment: center; }
+            Text { text: root.running ? "● 监控中" : "● 已暂停"; color: root.running ? #58d8a8 : #8a90a6; font-size: 11px; vertical-alignment: center; }
+            Rectangle { }
+            Button { text: "💾 导出 CSV"; enabled: root.can_export; clicked => { root.export_csv(); } }
+            Button { text: root.running ? "暂停监控" : "开始监控"; enabled: root.has_device; clicked => { root.toggle(); } }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            ComboBox {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                preferred-width: 0px;
+                model: root.package_labels;
+                current-index <=> root.selected_index;
+                enabled: root.has_device;
+                selected => { root.select_package(root.packages[self.current-index]); }
+            }
+            LineEdit {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                preferred-width: 0px;
+                text <=> root.package_draft;
+                placeholder-text: "或输入应用包名";
+                enabled: root.has_device;
+                accepted => { root.select_package(self.text); }
+            }
+            Button { text: "监控应用"; enabled: root.has_device; clicked => { root.select_package(root.package_draft); } }
+        }
+        Text {
+            text: root.has_error || !root.has_device ? root.message : root.sample_status;
+            color: root.has_error ? #ffb86c : #818ba5;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+        ScrollView {
+            horizontal-stretch: 1;
+            VerticalLayout {
+                alignment: start;
+                spacing: 12px;
+                padding-right: 10px;
+                Text { text: "设备整体"; color: #edf0fa; font-size: 13px; font-weight: 600; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    for metric in root.device_metrics: MetricCard { metric: metric; }
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    TrendChart { chart: root.charts[0]; }
+                    TrendChart { chart: root.charts[1]; }
+                }
+                Text { text: root.package == "" ? "应用监控" : "应用监控 · " + root.package; color: #edf0fa; font-size: 13px; font-weight: 600; overflow: elide; }
+                if root.package == "": Rectangle {
+                    height: 70px;
+                    border-radius: 8px;
+                    background: #202432;
+                    Text {
+                        text: "选择上方应用或输入包名，查看 CPU、内存和界面绘制趋势";
+                        color: #818ba5;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                if root.package != "": VerticalLayout {
+                    spacing: 10px;
+                    Text { text: root.app_status; color: #939bb4; font-size: 11px; wrap: word-wrap; }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        for metric in root.app_metrics: MetricCard { metric: metric; }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        TrendChart { chart: root.charts[2]; }
+                        TrendChart { chart: root.charts[3]; }
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        TrendChart { chart: root.charts[4]; }
+                        TrendChart { chart: root.charts[5]; }
+                    }
+                    Text {
+                        text: "CPU 以整机容量 100% 计；PSS 合计主进程和 : 子进程。UI FPS 为采样期间 HWUI 绘制帧数/秒，静止时可为 0，不包含 SurfaceView、游戏等独立渲染。";
+                        color: #727d97;
+                        font-size: 11px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+}

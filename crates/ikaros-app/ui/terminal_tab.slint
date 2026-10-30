@@ -1,0 +1,66 @@
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { App } from "app_state.slint";
+
+export component TerminalTab inherits VerticalLayout {
+    spacing: 10px;
+
+    HorizontalLayout {
+        spacing: 10px;
+        cmd_input := LineEdit {
+            text <=> App.shell_input_text;
+            placeholder-text: "输入 shell 命令 (例如: ls -l /sdcard, pm list packages)";
+            accepted => {
+                App.execute_shell(self.text);
+                App.shell_input_text = "";
+            }
+        }
+        Button {
+            text: "执行";
+            clicked => {
+                App.execute_shell(cmd_input.text);
+                App.shell_input_text = "";
+            }
+        }
+        Button {
+            text: "⬆";
+            width: 40px;
+            clicked => { App.shell_history_up(); }
+        }
+        Button {
+            text: "⬇";
+            width: 40px;
+            clicked => { App.shell_history_down(); }
+        }
+        Button {
+            text: App.is_shell_busy ? "⏹ 中断" : "⏹ 中断";
+            enabled: App.is_shell_busy;
+            clicked => { App.interrupt_shell(); }
+        }
+    }
+
+    Text {
+        text: App.is_shell_busy ? "命令正在执行，输出实时回传；点击中断会断开连接并结束远端进程" : "输出实时流式显示；同一时间只允许一条命令，⬆⬇ 可翻阅本会话历史";
+        font-size: 11px;
+        color: #72778f;
+    }
+
+    Rectangle {
+        border-radius: 8px;
+        background: #12131a;
+        border-width: 1px;
+        border-color: #2b2e40;
+
+        VerticalLayout {
+            padding: 12px;
+            ScrollView {
+                Text {
+                    text: App.shell_output;
+                    color: #00e575;
+                    font-family: "monospace";
+                    font-size: 12px;
+                    wrap: word-wrap;
+                }
+            }
+        }
+    }
+}

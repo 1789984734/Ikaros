@@ -1,0 +1,50 @@
+import { ScrollView } from "std-widgets.slint";
+
+export component StatusIndicator inherits Rectangle {
+    in property <string> message;
+    in property <bool> busy;
+
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    vertical-stretch: 0;
+    height: max(28px, min(120px, status-text.preferred-height + 16px));
+    border-radius: 6px;
+    background: #1f2230;
+
+    changed message => { status-scroll.content-y = 0px; }
+
+    HorizontalLayout {
+        height: 100%;
+        padding: 6px;
+        spacing: 6px;
+        Text {
+            width: 14px;
+            height: 100%;
+            text: root.busy ? "⏳" : "🟢";
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+        status-scroll := ScrollView {
+            min-width: 0px;
+            min-height: 0px;
+            preferred-width: 0px;
+            height: 100%;
+            horizontal-stretch: 1;
+            horizontal-scrollbar-policy: always-off;
+            vertical-scrollbar-policy: as-needed;
+            content-width: self.visible-width;
+            content-height: status-text.height;
+            status-text := Text {
+                width: max(0px, status-scroll.visible-width - 10px);
+                height: max(status-scroll.visible-height, self.preferred-height);
+                text: root.message;
+                font-size: 11px;
+                color: #8a90a6;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                accessible-label: "状态信息";
+            }
+        }
+    }
+}

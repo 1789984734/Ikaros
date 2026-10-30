@@ -1,0 +1,333 @@
+import { ListView } from "std-widgets.slint";
+
+export struct LogItemData {
+    timestamp: string,
+    level: string,
+    tag: string,
+    package_name: string,
+    package_filter: string,
+    message: string,
+    level_color: color,
+}
+
+component LogRow inherits Rectangle {
+    in property <LogItemData> entry;
+    in property <bool> show-package: true;
+    in property <bool> show-level: true;
+    in property <bool> show-tag: true;
+    in property <bool> wrap-lines;
+    in property <length> view-width;
+    in property <bool> selected;
+    in property <int> selection-count;
+    in property <bool> dragging;
+    in property <length> drag-y;
+    private property <bool> drag-target: root.dragging
+        && root.drag-y >= self.absolute-position.y
+        && root.drag-y < self.absolute-position.y + self.height;
+    callback copy(string);
+    callback select(bool, bool, bool);
+    callback drag-to(length);
+    callback drag-over();
+    callback end-drag();
+    callback copy-selected(bool);
+    callback browse();
+    callback add-filter(string, string);
+    private property <string> context-field;
+    private property <string> context-value;
+
+    function open-menu(x: length, y: length) {
+        root.context-field = "";
+        root.context-value = "";
+        if root.show-package && x >= package-cell.x && x < package-cell.x + package-cell.width {
+            root.context-field = "package";
+            root.context-value = root.entry.package_filter;
+        } else if root.show-level && x >= level-cell.x && x < level-cell.x + level-cell.width {
+            root.context-field = "level";
+            root.context-value = root.entry.level;
+        } else if root.show-tag && x >= tag-cell.x && x < tag-cell.x + tag-cell.width {
+            root.context-field = "tag";
+            root.context-value = root.entry.tag;
+        } else if x >= message-cell.x && x < message-cell.x + message-cell.width {
+            root.context-field = "message";
+            root.context-value = root.entry.message;
+        }
+        menu.show({ x: x, y: y });
+    }
+
+    changed drag-target => { if self.drag-target { root.drag-over(); } }
+
+    min-width: max(root.view-width, root.wrap-lines ? 0px : row.preferred-width);
+    height: max(26px, row.preferred-height);
+    background: root.selected ? #30466b : hover.has-hover ? #1f2233 : transparent;
+    hover := TouchArea {
+        // Cover overflow text while keeping pointer coordinates aligned with the row.
+        x: 0px;
+        y: 0px;
+        width: max(root.width, root.min-width);
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                if event.button == PointerEventButton.left || event.button == PointerEventButton.right {
+                    root.select(event.modifiers.shift, event.modifiers.control || event.modifiers.meta,
+                        event.button == PointerEventButton.right);
+                    if event.button == PointerEventButton.right {
+                        root.open-menu(self.mouse-x, self.mouse-y);
+                    }
+                }
+            } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+                root.end-drag();
+            }
+        }
+        moved => {
+            if self.pressed { root.drag-to(self.absolute-position.y + self.mouse-y); }
+        }
+        scroll-event(event) => {
+            // Suspend follow before the wheel starts moving the viewport.
+            if event.delta-y != 0px { root.browse(); }
+            return reject;
+        }
+    }
+
+    // Open explicitly after right-click selection has been applied.
+    menu := ContextMenuArea {
+        // show() receives coordinates relative to this item, matching the row's TouchArea.
+        x: 0px;
+        y: 0px;
+        width: 0px;
+        height: 0px;
+        Menu {
+            MenuItem {
+                title: "复制选中日志（" + root.selection-count + " 条）";
+                enabled: root.selection-count > 0;
+                activated => { root.copy-selected(false); }
+            }
+            MenuItem {
+                title: "复制选中日志内容";
+                enabled: root.selection-count > 0;
+                activated => { root.copy-selected(true); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "复制日志内容";
+                activated => { root.copy(root.entry.message); }
+            }
+            MenuItem {
+                title: "复制整条日志";
+                activated => {
+                    root.copy(root.entry.timestamp + " " + root.entry.package_name
+                        + " " + root.entry.level + " " + root.entry.tag
+                        + ": " + root.entry.message);
+                }
+            }
+            if root.context-field != "" && root.context-value != "": MenuSeparator { }
+            if root.context-field != "" && root.context-value != "": MenuItem {
+                title: root.context-field == "package" ? "将此 package 加入过滤"
+                    : root.context-field == "tag" ? "将此 Tag 加入过滤"
+                    : root.context-field == "level" ? (root.context-value == "F"
+                        ? "按 E/F 级别筛选" : "按 " + root.context-value + " 及以上级别筛选")
+                    : "将此正文加入过滤";
+                activated => { root.add-filter(root.context-field, root.context-value); }
+            }
+        }
+    }
+
+    row := HorizontalLayout {
+        padding-top: 4px;
+        padding-bottom: 4px;
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 0px;
+
+        Text {
+            width: 138px;
+            text: root.entry.timestamp;
+            font-family: "monospace";
+            font-size: 11px;
+            color: #6272a4;
+            vertical-alignment: center;
+        }
+
+        package-cell := Rectangle {
+            width: root.show-package ? (root.wrap-lines
+                ? max(100px, min(200px, root.view-width * 0.24))
+                : max(180px, package-label.preferred-width)) + 8px : 0px;
+            preferred-height: root.show-package ? package-label.preferred-height : 0px;
+            visible: root.show-package;
+            package-label := Text {
+                width: max(0px, parent.width - 8px);
+                height: self.preferred-height;
+                y: (parent.height - self.height) / 2;
+                text: root.entry.package_name;
+                font-family: "monospace";
+                font-size: 11px;
+                color: #bd93f9;
+                vertical-alignment: center;
+                wrap: root.wrap-lines ? word-wrap : no-wrap;
+                overflow: clip;
+                accessible-description: "包名";
+            }
+        }
+
+        level-cell := Rectangle {
+            width: root.show-level ? 28px : 0px;
+            preferred-height: root.show-level ? 18px : 0px;
+            visible: root.show-level;
+            Rectangle {
+                width: 20px;
+                height: 18px;
+                y: (parent.height - self.height) / 2;
+                border-radius: 3px;
+                background: root.entry.level_color;
+                Text {
+                    text: root.entry.level;
+                    font-family: "monospace";
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #11121a;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        tag-cell := Rectangle {
+            width: root.show-tag ? (root.wrap-lines
+                ? max(80px, min(120px, root.view-width * 0.16))
+                : max(120px, tag-label.preferred-width)) + 8px : 0px;
+            preferred-height: root.show-tag ? tag-label.preferred-height : 0px;
+            visible: root.show-tag;
+            tag-label := Text {
+                width: max(0px, parent.width - 8px);
+                height: self.preferred-height;
+                y: (parent.height - self.height) / 2;
+                text: root.entry.tag;
+                font-family: "monospace";
+                font-size: 11px;
+                font-weight: 600;
+                color: #8be9fd;
+                vertical-alignment: center;
+                wrap: root.wrap-lines ? word-wrap : no-wrap;
+                overflow: clip;
+            }
+        }
+
+        message-cell := Text {
+            min-width: root.wrap-lines ? 0px : self.preferred-width;
+            horizontal-stretch: 1;
+            text: root.entry.message;
+            font-family: "monospace";
+            font-size: 11px;
+            color: #f8f8f2;
+            vertical-alignment: center;
+            wrap: root.wrap-lines ? word-wrap : no-wrap;
+            overflow: clip;
+        }
+    }
+}
+
+export component LogcatView inherits FocusScope {
+    in property <[LogItemData]> entries;
+    in property <bool> show-package: true;
+    in property <bool> show-level: true;
+    in property <bool> show-tag: true;
+    in property <[bool]> selection;
+    in property <int> selection-count;
+    callback copy(string);
+    callback select(int, bool, bool, bool);
+    callback drag-select(int);
+    callback copy-selected(bool);
+    callback select-all();
+    callback clear-selection();
+    callback add-filter(string, string);
+    private property <bool> dragging: false;
+    private property <length> drag-y: -1px;
+    in property <bool> wrap-lines: false;
+    in-out property <bool> follow-latest: true;
+    out property <length> scroll-offset: -list.content-y;
+    private property <length> bottom-y: min(0px, list.visible-height - list.content-height);
+    private property <length> distance-to-bottom: list.content-y - self.bottom-y;
+    private property <length> minimum-x: min(0px, list.visible-width - list.content-width);
+
+    Timer {
+        interval: 30ms;
+        running: root.dragging && root.drag-y >= 0px
+            && (root.drag-y < root.absolute-position.y
+                || root.drag-y > root.absolute-position.y + list.visible-height);
+        triggered => {
+            list.content-y = max(root.bottom-y, min(0px, list.content-y
+                + (root.drag-y < root.absolute-position.y ? 20px : -20px)));
+        }
+    }
+
+    key-pressed(event) => {
+        if event.modifiers.control || event.modifiers.meta {
+            if event.text.to-lowercase() == "c" && root.selection-count > 0 {
+                root.copy-selected(false);
+                return accept;
+            }
+            if event.text.to-lowercase() == "a" {
+                root.follow-latest = false;
+                root.select-all();
+                return accept;
+            }
+        }
+        if event.text == Key.Escape {
+            root.dragging = false;
+            root.clear-selection();
+            return accept;
+        }
+        return reject;
+    }
+
+    public function scroll-to-bottom() {
+        root.follow-latest = true;
+        list.content-y = self.bottom-y;
+    }
+
+    changed wrap-lines => { list.content-x = 0px; }
+    changed minimum-x => {
+        list.content-x = max(self.minimum-x, min(0px, list.content-x));
+    }
+    // Coalesce layout changes instead of scrolling from a geometry change callback.
+    Timer {
+        interval: 16ms;
+        running: root.follow-latest && abs(root.distance-to-bottom) > 0.5px;
+        triggered => { list.content-y = root.bottom-y; }
+    }
+    list := ListView {
+        width: root.width;
+        height: root.height;
+        horizontal-scrollbar-policy: root.wrap-lines ? always-off : as-needed;
+        scrolled => {
+            root.follow-latest = false;
+        }
+
+        for log[index] in root.entries: LogRow {
+            entry: log;
+            show-package: root.show-package;
+            show-level: root.show-level;
+            show-tag: root.show-tag;
+            selected: root.selection[index];
+            selection-count: root.selection-count;
+            dragging: root.dragging;
+            drag-y: root.drag-y < 0px ? -1px : max(root.absolute-position.y,
+                min(root.absolute-position.y + list.visible-height - 1px, root.drag-y));
+            wrap-lines: root.wrap-lines;
+            view-width: list.visible-width;
+            copy(text) => { root.copy(text); }
+            copy-selected(contents-only) => { root.copy-selected(contents-only); }
+            add-filter(field, value) => { root.add-filter(field, value); }
+            browse => { root.follow-latest = false; }
+            select(shift, additive, context) => {
+                root.focus();
+                root.follow-latest = false;
+                root.dragging = false;
+                root.drag-y = -1px;
+                root.select(index, shift, additive, context);
+                root.dragging = !context;
+            }
+            drag-to(y) => { root.drag-y = y; }
+            drag-over => { root.drag-select(index); }
+            end-drag => { root.dragging = false; }
+        }
+    }
+}

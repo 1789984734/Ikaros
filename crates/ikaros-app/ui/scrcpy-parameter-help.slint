@@ -1,0 +1,147 @@
+import { Button, ListView } from "std-widgets.slint";
+
+export struct ScrcpyParameterInfo {
+    example: string,
+    aliases: string,
+    description: string,
+}
+
+export component ScrcpyParameterHelp inherits Rectangle {
+    in property <[ScrcpyParameterInfo]> parameters;
+    in property <string> version;
+    in-out property <bool> expanded: false;
+    callback copy(string);
+    callback open-documentation(int);
+    private property <length> example-width: 220px;
+
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    min-height: root.expanded ? 160px : 44px;
+    preferred-height: root.expanded ? 320px : 44px;
+    max-height: root.expanded ? 360px : 44px;
+    vertical-stretch: root.expanded ? 1 : 0;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #313548;
+    background: #202432;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            height: 28px;
+            spacing: 12px;
+            Button {
+                text: root.expanded ? "收起常用参数对照表" : "展开常用参数对照表";
+                clicked => { root.expanded = !root.expanded; }
+            }
+            Text {
+                min-width: 0px;
+                text: "scrcpy " + root.version + " 官方文档";
+                font-size: 11px;
+                color: #8b92b0;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            Rectangle { }
+        }
+
+        if root.expanded: Text {
+            text: "点击参数示例可复制，参数值可按需修改；-Sw 等同于 -S -w。";
+            font-size: 11px;
+            color: #8b92b0;
+            wrap: word-wrap;
+        }
+
+        if root.expanded: Rectangle {
+            height: 22px;
+            Text {
+                x: 10px;
+                width: root.example-width;
+                height: parent.height;
+                text: "参数示例";
+                color: #8b92b0;
+                font-size: 12px;
+            }
+            Text {
+                x: root.example-width + 22px;
+                width: max(0px, parent.width - root.example-width - 92px);
+                height: parent.height;
+                text: "作用";
+                color: #8b92b0;
+                font-size: 12px;
+            }
+            Text {
+                x: parent.width - 58px;
+                width: 48px;
+                height: parent.height;
+                text: "来源";
+                color: #8b92b0;
+                font-size: 12px;
+            }
+        }
+
+        if root.expanded: ListView {
+            min-height: 32px;
+            horizontal-stretch: 1;
+
+            for parameter[index] in root.parameters: Rectangle {
+                height: max(56px, max(example-column.preferred-height, description.preferred-height) + 20px);
+
+                HorizontalLayout {
+                    padding: 10px;
+                    spacing: 12px;
+
+                    example-column := VerticalLayout {
+                        width: root.example-width;
+                        spacing: 4px;
+                        alignment: center;
+                        Text {
+                            text: parameter.example;
+                            font-size: 12px;
+                            color: copy-touch.has-hover ? #ffffff : #a9c4ff;
+                            wrap: word-wrap;
+                            accessible-role: button;
+                            accessible-action-default => { root.copy(parameter.example); }
+                            copy-touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.copy(parameter.example); }
+                            }
+                            Tooltip { text: @markdown("点击复制参数示例"); }
+                        }
+                        if parameter.aliases != "": Text {
+                            text: parameter.aliases;
+                            font-size: 11px;
+                            color: #737d99;
+                        }
+                    }
+
+                    description := Text {
+                        min-width: 0px;
+                        preferred-width: 0px;
+                        horizontal-stretch: 1;
+                        text: parameter.description;
+                        font-size: 12px;
+                        color: #b4bdd2;
+                        wrap: word-wrap;
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        width: 48px;
+                        text: "文档";
+                        clicked => { root.open-documentation(index); }
+                    }
+                }
+
+                Rectangle {
+                    y: parent.height - self.height;
+                    height: 1px;
+                    background: #2c3245;
+                }
+            }
+        }
+    }
+}

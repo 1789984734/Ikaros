@@ -1,0 +1,393 @@
+import { Button, ListView, LineEdit } from "std-widgets.slint";
+import { App } from "app_state.slint";
+import { ToolbarIconButton } from "widgets.slint";
+
+export component FileTab inherits VerticalLayout {
+    spacing: 12px;
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        ToolbarIconButton {
+            glyph: @image-url("icons/arrow-up.svg");
+            label: "返回上级";
+            clicked => { App.navigate_up(); }
+        }
+
+        ToolbarIconButton {
+            glyph: @image-url("icons/refresh.svg");
+            label: "刷新目录";
+            clicked => { App.refresh_files(); }
+        }
+
+        Button {
+            text: "📁+ 新建文件夹";
+            enabled: App.current_serial != "未连接";
+            clicked => {
+                App.file_input_visible = true;
+                App.file_input_is_rename = false;
+            }
+        }
+
+        Button {
+            text: "📥 下载目录";
+            clicked => { App.pick_download_dir(); }
+        }
+
+        Rectangle {
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            border-radius: 6px;
+            background: #191b24;
+            border-width: 1px;
+            border-color: #313548;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                Text {
+                    text: App.current_dir_path;
+                    min-width: 0px;
+                    overflow: elide;
+                    font-size: 13px;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        background: #1c1e2b;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: #2b2e40;
+
+        ContextMenuArea {
+            Menu {
+                MenuItem {
+                    title: "上传文件到当前目录…";
+                    enabled: App.current_serial != "未连接";
+                    activated => { App.upload_file(App.current_dir_path); }
+                }
+                MenuItem {
+                    title: "新建文件夹…";
+                    enabled: App.current_serial != "未连接";
+                    activated => {
+                        App.file_input_visible = true;
+                        App.file_input_is_rename = false;
+                    }
+                }
+                MenuItem {
+                    title: "刷新目录";
+                    activated => { App.refresh_files(); }
+                }
+                MenuSeparator { }
+                MenuItem {
+                    title: "复制当前路径";
+                    activated => { App.copy_clipboard(App.current_dir_path); }
+                }
+            }
+        }
+
+        VerticalLayout {
+            file_header := Rectangle {
+                height: 36px;
+                background: #232636;
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 16px;
+                    name-sort := HorizontalLayout {
+                        min-width: 0px;
+                        preferred-width: 0px;
+                        horizontal-stretch: 1;
+                        spacing: 4px;
+                        TouchArea {
+                            clicked => { App.sort_files(0); }
+                        }
+                        Text { text: App.file_sort_key == 0 ? (App.file_sort_asc ? "名称 ↑" : "名称 ↓") : "名称"; font-size: 12px; font-weight: 600; color: App.file_sort_key == 0 ? #ffffff : #8e95ae; vertical-alignment: center; }
+                    }
+                    Text { width: 96px; text: "类型"; font-size: 12px; font-weight: 600; color: #8e95ae; vertical-alignment: center; }
+                    TouchArea {
+                        width: 120px;
+                        clicked => { App.sort_files(1); }
+                        Text { width: parent.width; text: App.file_sort_key == 1 ? (App.file_sort_asc ? "大小 ↑" : "大小 ↓") : "大小"; font-size: 12px; font-weight: 600; color: App.file_sort_key == 1 ? #ffffff : #8e95ae; vertical-alignment: center; horizontal-alignment: right; }
+                    }
+                    TouchArea {
+                        width: 140px;
+                        clicked => { App.sort_files(2); }
+                        Text { width: parent.width; text: App.file_sort_key == 2 ? (App.file_sort_asc ? "修改时间 ↑" : "修改时间 ↓") : "修改时间"; font-size: 12px; font-weight: 600; color: App.file_sort_key == 2 ? #ffffff : #8e95ae; vertical-alignment: center; }
+                    }
+                }
+            }
+
+            ListView {
+                for item in App.file_items: Rectangle {
+                    height: 40px;
+                    background: touch_item.has-hover ? #252839 : transparent;
+
+                    touch_item := TouchArea {
+                        mouse-cursor: item.is_dir ? pointer : default;
+                        accessible-role: button;
+                        accessible-label: item.name;
+                        clicked => {
+                            if (item.is_dir) {
+                                App.enter_directory(item.name);
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 14px;
+                        padding-right: 14px;
+                        spacing: 16px;
+
+                        Text {
+                            min-width: 0px;
+                            preferred-width: 0px;
+                            horizontal-stretch: 1;
+                            text: item.name;
+                            font-size: 13px;
+                            color: item.is_dir ? #5dade2 : #ffffff;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            width: 96px;
+                            text: item.is_dir ? "文件夹" : "文件";
+                            font-size: 12px;
+                            color: #7b819a;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            width: 120px;
+                            text: item.size_str;
+                            font-size: 12px;
+                            color: #7b819a;
+                            vertical-alignment: center;
+                            horizontal-alignment: right;
+                        }
+
+                        Text {
+                            width: 140px;
+                            text: item.modified_str;
+                            font-size: 12px;
+                            color: #7b819a;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+
+                    ContextMenuArea {
+                        Menu {
+                            if item.is_dir: MenuItem {
+                                title: "打开文件夹";
+                                activated => { App.enter_directory(item.name); }
+                            }
+                            if !item.is_dir: MenuItem {
+                                title: "下载文件";
+                                activated => { App.pull_file(item.path); }
+                            }
+                            MenuItem {
+                                title: item.is_dir ? "上传文件到此文件夹…" : "上传文件到当前目录…";
+                                activated => { App.upload_file(item.is_dir ? item.path : App.current_dir_path); }
+                            }
+                            MenuItem {
+                                title: "重命名…";
+                                activated => {
+                                    App.file_input_target_path = item.path;
+                                    App.file_input_prefill = item.name;
+                                    App.file_input_is_rename = true;
+                                    App.file_input_visible = true;
+                                }
+                            }
+                            MenuItem {
+                                title: "删除";
+                                activated => {
+                                    App.file_confirm_path = item.path;
+                                    App.file_confirm_visible = true;
+                                }
+                            }
+                            MenuSeparator { }
+                            MenuItem {
+                                title: "复制完整路径";
+                                activated => { App.copy_clipboard(item.path); }
+                            }
+                            MenuItem {
+                                title: "刷新目录";
+                                activated => { App.refresh_files(); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if App.file_items.length == 0 && !App.is_busy && App.current_serial != "未连接": Text {
+            y: file_header.height;
+            width: parent.width;
+            height: parent.height - file_header.height;
+            text: "此文件夹为空";
+            font-size: 14px;
+            color: #8b92ab;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 12px;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 4px;
+
+            Text {
+                text: App.file_status_text;
+                min-width: 0px;
+                font-size: 12px;
+                color: #8b92ab;
+                overflow: elide;
+            }
+
+            if App.file_transfer_percent >= 0: Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: #232737;
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: parent.width * clamp(App.file_transfer_percent, 0.0, 1.0);
+                    height: parent.height;
+                    border-radius: 2px;
+                    background: #4f80ff;
+                }
+            }
+        }
+
+        Text {
+            text: "共 " + App.file_items.length + " 项";
+            horizontal-stretch: 0;
+            font-size: 12px;
+            color: #8b92ab;
+            horizontal-alignment: right;
+        }
+
+        if App.file_transfer_percent >= 0: Rectangle {
+            width: 64px;
+            height: 26px;
+            border-radius: 6px;
+            background: #3a2b34;
+            border-width: 1px;
+            border-color: #f47f8f;
+            horizontal-stretch: 0;
+            Text {
+                text: "取消";
+                font-size: 12px;
+                color: #f47f8f;
+            }
+            TouchArea {
+                clicked => { App.cancel_transfer(); }
+            }
+        }
+    }
+
+    // 重命名 / 新建文件夹 输入浮层
+    if App.file_input_visible: Rectangle {
+        height: 52px;
+        border-radius: 8px;
+        background: #232737;
+        border-width: 1px;
+        border-color: #4f80ff;
+
+        init => {
+            file_input_edit.text = App.file_input_is_rename ? App.file_input_prefill : "";
+            file_input_edit.focus();
+        }
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 10px;
+
+            file_input_edit := LineEdit {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                preferred-width: 0px;
+                placeholder-text: App.file_input_is_rename ? "输入新的名称" : "输入新文件夹名称";
+                accepted => {
+                    if (self.text != "") {
+                        if (App.file_input_is_rename) {
+                            App.rename_file(App.file_input_target_path, self.text);
+                        } else {
+                            App.create_directory(self.text);
+                        }
+                    }
+                    App.file_input_visible = false;
+                }
+            }
+
+            Button {
+                text: "确定";
+                clicked => {
+                    if (file_input_edit.text != "") {
+                        if (App.file_input_is_rename) {
+                            App.rename_file(App.file_input_target_path, file_input_edit.text);
+                        } else {
+                            App.create_directory(file_input_edit.text);
+                        }
+                    }
+                    App.file_input_visible = false;
+                }
+            }
+
+            Button {
+                text: "取消";
+                clicked => { App.file_input_visible = false; }
+            }
+        }
+    }
+
+    // 删除确认浮层
+    if App.file_confirm_visible: Rectangle {
+        height: 88px;
+        border-radius: 8px;
+        background: #232737;
+        border-width: 1px;
+        border-color: #f47f8f;
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+
+            Text {
+                text: "确认删除 " + App.file_confirm_path + " ？此操作不可恢复";
+                font-size: 12px;
+                color: #edf0fa;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+
+                Rectangle { }
+
+                Button {
+                    text: "取消";
+                    clicked => { App.file_confirm_visible = false; }
+                }
+
+                Button {
+                    text: "确认删除";
+                    clicked => {
+                        App.confirm_delete_file(App.file_confirm_path);
+                        App.file_confirm_visible = false;
+                    }
+                }
+            }
+        }
+    }
+}

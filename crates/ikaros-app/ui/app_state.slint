@@ -1,0 +1,155 @@
+// 应用全局状态（SSOT）：Rust MVI Store ↔ 各页组件共用的唯一数据通道
+import { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData } from "types.slint";
+import { LogItemData } from "logcat.slint";
+import { PerformanceMetric, PerformanceChart } from "performance.slint";
+import { LogFilterCompletion } from "log-search.slint";
+import { ScrcpyParameterInfo } from "scrcpy-parameter-help.slint";
+
+export global App {
+    in property <[DeviceItemData]> device_list: [];
+    in-out property <int> selected_device_index: 0;
+    in property <string> current_serial: "未连接";
+    in property <string> device_model: "未知";
+    in property <string> device_brand: "未知";
+    in property <string> device_android_version: "未知";
+    in property <string> device_sdk: "未知";
+    in property <string> device_resolution: "未知";
+    in property <string> device_battery: "未知";
+    in property <string> device_abi: "未知";
+    in property <string> device_imei: "未知";
+    in property <string> device_wifi_ip: "无法获取";
+    in property <string> device_wifi_mac: "无法获取";
+    in property <string> device_bluetooth_mac: "无法获取";
+    in property <bool> is_busy: false;
+    in property <string> status_message: "就绪";
+    in property <string> shell_output: "";
+    in property <bool> is_shell_busy: false;
+    in-out property <string> shell_input_text: "";
+    in property <bool> is_mirroring: false;
+    in-out property <string> scrcpy_path: "/Users/android-02/Downloads/scrcpy/scrcpy";
+    in-out property <int> scrcpy_max_size: 0;  // 0: 不限制
+    in-out property <int> scrcpy_max_fps: 2;   // 默认 60
+    in-out property <int> scrcpy_bit_rate: 2;  // 默认 8M
+    in-out property <int> scrcpy_codec: 0;     // 0: 默认
+    in-out property <bool> scrcpy_audio: false;
+    in-out property <bool> scrcpy_stay_awake: true;
+    in-out property <string> scrcpy_extra_args: "";
+    in property <[ScrcpyTagData]> scrcpy_custom_tags: [];
+    in property <[ScrcpyParameterInfo]> scrcpy_parameter_help: [];
+    in property <string> scrcpy_help_version;
+    in property <string> current_dir_path: "/sdcard";
+    in property <[FileItemData]> file_items: [];
+    in property <string> file_status_text;
+    in property <float> file_transfer_percent: -1.0;
+    in property <string> download_dir_text;
+    in property <[string]> wireless_history;
+    in property <int> file_sort_key: 0;          // 0: 名称 1: 大小 2: 修改时间
+    in property <bool> file_sort_asc: true;
+    in-out property <bool> file_input_visible: false;
+    in-out property <bool> file_input_is_rename: false;
+    in-out property <string> file_input_target_path: "";
+    in-out property <string> file_input_prefill: "";
+    in-out property <bool> file_confirm_visible: false;
+    in-out property <string> file_confirm_path: "";
+    in-out property <string> wireless_address: "";
+    in-out property <int> record_seconds_index: 1; // 0: 15s 1: 30s 2: 60s
+    in property <[AppItemData]> app_items: [];
+    in-out property <int> app_filter_tab: 0; // 0: 全部, 1: 系统, 2: 第三方
+    in property <string> app_search_query;
+    in property <string> app_status_text: "就绪";
+    in property <[LogItemData]> log_items: [];
+    in property <[bool]> log_selection;
+    in property <int> log_selection_count;
+    in property <bool> is_logcat_active: false;
+    in-out property <bool> is_log_recording_enabled: false;
+    in property <bool> is_log_recording_busy: false;
+    in property <string> log_recording_message;
+    in property <bool> log_recording_has_error: false;
+    in property <string> log_recording_directory: "";
+    in property <string> log_search_query;
+    in property <bool> log_show_package: true;
+    in property <bool> log_show_tag: true;
+    in-out property <int> log_level_selected: 0; // 0: ALL, 1: V, 2: D, 3: I, 4: W, 5: E
+    in-out property <bool> follow_latest_logs: true;
+    in property <bool> log_updates_pending: false;
+    in-out property <bool> log_word_wrap: true;
+    in property <bool> performance_running;
+    in property <bool> performance_has_error;
+    in property <string> performance_message;
+    in property <string> performance_sample_status;
+    in property <[string]> performance_packages;
+    in property <[string]> performance_package_labels;
+    in-out property <int> performance_selected_index;
+    in property <string> performance_package;
+    in property <string> performance_app_status;
+    in property <[PerformanceMetric]> performance_device_metrics;
+    in property <[PerformanceMetric]> performance_app_metrics;
+    in property <[PerformanceChart]> performance_charts;
+    in property <bool> performance_can_export: false;
+    callback toggle_performance();
+    callback select_performance_package(string);
+    in-out property <int> active_tab: 0; // 0: 概览, 1: 投屏, 2: 文件, 3: 应用, 4: 日志, 5: 终端, 6: 性能
+    callback refresh_devices();
+    callback select_device(int);
+    callback execute_shell(string);
+    callback switch_tab(int);
+    callback start_mirroring();
+    callback stop_mirroring();
+    callback browse_scrcpy_path();
+    callback scrcpy_extra_args_changed();
+    callback add_scrcpy_tag();
+    callback toggle_scrcpy_tag(int);
+    callback remove_scrcpy_tag(int);
+    pure callback describe_scrcpy_parameter(string) -> string;
+    callback open_scrcpy_parameter_doc(int);
+    callback navigate_up();
+    callback refresh_files();
+    callback enter_directory(string);
+    callback pull_file(string);
+    callback upload_file(string);
+    callback confirm_delete_file(string);
+    callback rename_file(string, string);
+    callback create_directory(string);
+    callback sort_files(int);
+    callback cancel_transfer();
+    callback pick_download_dir();
+    callback interrupt_shell();
+    callback shell_history_up();
+    callback shell_history_down();
+    callback wireless_connect(string);
+    callback wireless_disconnect(string);
+    callback enable_wireless_mode();
+    callback capture_screenshot();
+    callback capture_screen_recording(int);
+    callback capture_bugreport();
+    callback export_performance_csv();
+    callback export_filtered_logs();
+    callback filter_apps(int);
+    callback search_apps(string);
+    callback refresh_apps();
+    callback launch_app(string);
+    callback stop_app(string);
+    callback clear_app(string);
+    callback uninstall_app(string);
+    callback extract_apk(string, string);
+    callback toggle_logcat();
+    callback update_log_entries([LogItemData]);
+    callback log_follow_changed(bool);
+    changed follow_latest_logs => { self.log_follow_changed(self.follow_latest_logs); }
+    callback select_log(int, bool, bool, bool);
+    callback drag_select_log(int);
+    callback copy_selected_logs(bool);
+    callback select_all_logs();
+    callback clear_log_selection();
+    callback set_log_recording(bool);
+    callback open_log_recording_directory();
+    callback clear_logcat_view();
+    callback filter_log_level(int);
+    callback search_logs(string);
+    callback add_log_filter(string, string);
+    pure callback complete_log_filter(string, int) -> [LogFilterCompletion];
+    pure callback check_has_apk(data-transfer) -> bool;
+    callback handle_apk_drop(data-transfer);
+    callback copy_clipboard(string);
+    callback scrcpy_path_changed();
+}

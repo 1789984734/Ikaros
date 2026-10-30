@@ -1,0 +1,162 @@
+// 通用 UI 原子组件
+import { Button } from "std-widgets.slint";
+
+export component NavItem inherits Rectangle {
+    in property <string> icon: "";
+    in property <string> title: "";
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 44px;
+    border-radius: 8px;
+    background: root.active ? #3a3f58 : (touch.has-hover ? #282c3f : transparent);
+    animate background { duration: 150ms; }
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 12px;
+
+        Text {
+            text: root.icon;
+            font-size: 16px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.title;
+            font-size: 14px;
+            font-weight: root.active ? 600 : 400;
+            color: root.active ? #ffffff : #a0a5b8;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.active: Rectangle {
+        x: 0px;
+        y: 8px;
+        width: 3px;
+        height: 28px;
+        border-radius: 2px;
+        background: #4f80ff;
+    }
+}
+
+export component ToolbarIconButton inherits Rectangle {
+    in property <image> glyph;
+    in property <string> label;
+    callback clicked();
+
+    width: 32px;
+    height: 32px;
+    horizontal-stretch: 0;
+
+    Button {
+        width: parent.width;
+        height: parent.height;
+        accessible-label: root.label;
+        clicked => { root.clicked(); }
+    }
+
+    Image {
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        source: root.glyph;
+        image-fit: contain;
+        accessible-role: none;
+    }
+}
+
+export component InfoCard inherits Rectangle {
+    in property <string> title: "";
+    in property <string> value: "";
+    callback clicked();
+
+    property <bool> just_copied: false;
+
+    // 固定等宽拉伸，确保 4 列宽度严格均等
+    horizontal-stretch: 1;
+
+    background: touch.has-hover ? #2d3246 : #232737;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: touch.has-hover ? #4f80ff : #313548;
+    animate background { duration: 150ms; }
+    animate border-color { duration: 150ms; }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.just_copied = true;
+            root.clicked();
+        }
+    }
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            Text {
+                text: root.title;
+                font-size: 12px;
+                color: #8a90a6;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            Rectangle { }
+
+            // 保持节点常驻布局树，只通过透明度动画渐入，彻底避免改变卡片测量宽度导致拉伸抖动
+            Text {
+                text: root.just_copied ? "✓ 已复制" : "📋 复制";
+                font-size: 11px;
+                font-weight: root.just_copied ? 600 : 400;
+                color: root.just_copied ? #00d26a : #4f80ff;
+                vertical-alignment: center;
+                opacity: touch.has-hover ? 1.0 : 0.0;
+                animate opacity { duration: 120ms; }
+            }
+        }
+
+        Text {
+            text: root.value;
+            font-size: 15px;
+            font-weight: 600;
+            color: #ffffff;
+            overflow: elide;
+        }
+    }
+}
+
+export component CopyText inherits Text {
+    in property <color> idle_color: #ffffff;
+    callback copy();
+
+    property <bool> just_copied: false;
+
+    vertical-alignment: center;
+    overflow: elide;
+    color: just_copied ? #00d26a : (touch.has-hover ? #4f80ff : idle_color);
+    animate color { duration: 120ms; }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.just_copied = true;
+            root.copy();
+        }
+    }
+
+    Timer {
+        interval: 1200ms;
+        running: root.just_copied;
+        triggered => { root.just_copied = false; }
+    }
+}

@@ -1,0 +1,321 @@
+import { Button, ScrollView } from "std-widgets.slint";
+import { PerformancePanel } from "performance.slint";
+export { PerformanceMetric, PerformanceChart } from "performance.slint";
+export { LogItemData } from "logcat.slint";
+export { LogFilterCompletion } from "log-search.slint";
+import { StatusIndicator } from "status.slint";
+import { App } from "app_state.slint";
+export { App }
+export { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData } from "types.slint";
+import { NavItem } from "widgets.slint";
+import { OverviewTab } from "overview_tab.slint";
+import { ScrcpyTab } from "scrcpy_tab.slint";
+import { FileTab } from "file_tab.slint";
+import { AppsTab } from "apps_tab.slint";
+import { LogcatTab } from "logcat_tab.slint";
+import { TerminalTab } from "terminal_tab.slint";
+import { SettingsTab } from "settings_tab.slint";
+
+export { ScrcpyParameterInfo } from "scrcpy-parameter-help.slint";
+
+export component AppWindow inherits Window {
+    title: "Ikaros | Android 设备调试管理平台";
+    preferred-width: 1120px;
+    preferred-height: 740px;
+    min-width: 850px;
+    min-height: 550px;
+    background: #191b26;
+    // 状态属性（由 Rust MVI 统一注入）
+
+    // 投屏相关状态
+
+    // 外部 scrcpy 启动参数 (一键启动时由 Rust 读取)
+
+    // 文件管理状态
+
+    // 应用管理状态
+
+    // Logcat 日志状态
+
+    // 意图回调（通知 Rust 后端发往 MVI Store）
+
+    // 文件管理器回调
+
+    // 终端回调
+
+    // 无线调试回调
+
+    // 快捷工具与导出回调
+
+
+    drop_zone := DropArea {
+        can-drop(event) => {
+            if (App.check_has_apk(event.data)) {
+                return DragAction.copy;
+            }
+            return DragAction.none;
+        }
+        dropped(event) => {
+            App.handle_apk_drop(event.data);
+            return event.proposed-action;
+        }
+
+        HorizontalLayout {
+
+        // ========== 1. 侧边栏导航区 ==========
+        VerticalLayout {
+            width: 220px;
+            padding: 16px;
+            spacing: 6px;
+
+
+            Text {
+                text: "连接的设备 (" + App.device_list.length + ")";
+                font-size: 11px;
+                color: #72778f;
+                font-weight: 600;
+            }
+
+
+            for dev[idx] in App.device_list: Rectangle {
+                height: max(32px, device-name.preferred-height + 12px);
+                border-radius: 6px;
+                background: (App.selected_device_index == idx) ? #2e3348 : transparent;
+                TouchArea {
+                    clicked => {
+                        App.selected_device_index = idx;
+                        App.select_device(idx);
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: #00d26a;
+                        y: (parent.height - self.height) / 2;
+                    }
+                    device-name := Text {
+                        min-width: 0px;
+                        preferred-width: 0px;
+                        horizontal-stretch: 1;
+                        text: dev.label;
+                        font-size: 12px;
+                        color: (App.selected_device_index == idx) ? #ffffff : #a0a5b8;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        overflow: clip;
+                    }
+                }
+
+                ContextMenuArea {
+                    Menu {
+                        MenuItem {
+                            title: "复制序列号";
+                            activated => { App.copy_clipboard(dev.serial); }
+                        }
+                    }
+                }
+            }
+
+            Rectangle { height: 6px; }
+
+            Button {
+                text: "🔄 刷新设备列表";
+                clicked => { App.refresh_devices(); }
+            }
+
+            Rectangle { height: 16px; }
+
+
+            ScrollView {
+                min-height: 80px;
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 6px;
+                    NavItem {
+                        icon: "📊";
+                        title: "设备概览";
+                        active: App.active_tab == 0;
+                        clicked => { App.active_tab = 0; App.switch_tab(0); }
+                    }
+                    NavItem {
+                        icon: "🖥️";
+                        title: "实时投屏操控";
+                        active: App.active_tab == 1;
+                        clicked => { App.active_tab = 1; App.switch_tab(1); }
+                    }
+                    NavItem {
+                        icon: "📁";
+                        title: "文件管理器";
+                        active: App.active_tab == 2;
+                        clicked => { App.active_tab = 2; App.switch_tab(2); }
+                    }
+                    NavItem {
+                        icon: "📦";
+                        title: "应用管理";
+                        active: App.active_tab == 3;
+                        clicked => { App.active_tab = 3; App.switch_tab(3); }
+                    }
+                    NavItem {
+                        icon: "📜";
+                        title: "Logcat";
+                        active: App.active_tab == 4;
+                        clicked => { App.active_tab = 4; App.switch_tab(4); }
+                    }
+                    NavItem {
+                        icon: "💻";
+                        title: "ADB 终端";
+                        active: App.active_tab == 5;
+                        clicked => { App.active_tab = 5; App.switch_tab(5); }
+                    }
+                    NavItem {
+                        icon: "📈";
+                        title: "性能监控";
+                        active: App.active_tab == 6;
+                        clicked => { App.active_tab = 6; App.switch_tab(6); }
+                    }
+                    NavItem {
+                        icon: "⚙️";
+                        title: "设置";
+                        active: App.active_tab == 7;
+                        clicked => { App.active_tab = 7; App.switch_tab(7); }
+                    }
+                }
+            }
+
+
+            StatusIndicator {
+                message: App.status_message;
+                busy: App.is_busy;
+            }
+        }
+
+        Rectangle { width: 1px; background: #252838; }
+
+
+        // ========== 2. 主内容展示区 ==========
+        VerticalLayout {
+            padding: 20px;
+            spacing: 16px;
+
+
+            HorizontalLayout {
+                spacing: 16px;
+                Text {
+                    text: App.device_model;
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "[" + App.current_serial + "]";
+                    font-size: 13px;
+                    color: #636882;
+                    vertical-alignment: center;
+                }
+                Rectangle { }
+            }
+
+            Rectangle { height: 1px; background: #252838; }
+
+
+            if App.active_tab == 6: PerformancePanel {
+                has_device: App.device_list.length > 0;
+                running: App.performance_running;
+                has_error: App.performance_has_error;
+                message: App.performance_message;
+                sample_status: App.performance_sample_status;
+                packages: App.performance_packages;
+                package_labels: App.performance_package_labels;
+                selected_index <=> App.performance_selected_index;
+                package: App.performance_package;
+                app_status: App.performance_app_status;
+                device_metrics: App.performance_device_metrics;
+                app_metrics: App.performance_app_metrics;
+                charts: App.performance_charts;
+                can_export: App.performance_can_export;
+                toggle => { App.toggle_performance(); }
+                select_package(package) => { App.select_performance_package(package); }
+                export_csv => { App.export_performance_csv(); }
+            }
+
+            if App.active_tab == 0: OverviewTab { }
+
+            if App.active_tab == 1: ScrcpyTab { }
+
+            if App.active_tab == 2: FileTab { }
+
+            if App.active_tab == 3: AppsTab { }
+
+            if App.active_tab == 4: LogcatTab { }
+
+            if App.active_tab == 5: TerminalTab { }
+
+            if App.active_tab == 7: SettingsTab { }
+        }
+
+
+        // 当用户将 APK 文件拖入窗口时展现的全屏反馈覆盖层
+        if drop_zone.has-drag: Rectangle {
+            width: 100%;
+            height: 100%;
+            background: #0f121df0;
+            border-width: 3px;
+            border-color: #4f80ff;
+            border-radius: 8px;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 16px;
+
+                Text {
+                    text: "📦";
+                    font-size: 64px;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: (App.current_serial != "未连接") ? "释放鼠标以自动安装 APK" : "⚠️ 未检测到有效设备";
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: (App.current_serial != "未连接") ?
+                        ("目标设备: " + App.device_model + " (" + App.current_serial + ")") :
+                        "请先连接并选择一台 Android 设备";
+                    font-size: 14px;
+                    color: (App.current_serial != "未连接") ? #8a90a6 : #ff6b6b;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle {
+                    width: 240px;
+                    height: 36px;
+                    background: #25283a;
+                    border-radius: 18px;
+                    border-width: 1px;
+                    border-color: #4f80ff;
+                    HorizontalLayout {
+                        alignment: center;
+                        Text {
+                            text: "⚡ 极速 ADB Sync 推送 + 静默安装";
+                            font-size: 12px;
+                            color: #4f80ff;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+}

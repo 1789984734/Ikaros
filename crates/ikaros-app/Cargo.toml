@@ -1,0 +1,40 @@
+[package]
+name = "ikaros-app"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ikaros"
+path = "src/main.rs"
+
+[dependencies]
+ikaros-domain = { workspace = true }
+ikaros-usecase = { workspace = true }
+ikaros-adb = { workspace = true }
+
+tokio = { workspace = true }
+slint = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+arboard = "3.7"
+shlex = "2"
+rfd = "0.17"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+i-slint-backend-winit = { version = "=1.18.1", default-features = false, features = ["muda"] }
+muda = { version = "0.19.3", default-features = false }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
+raw-window-handle = "0.6"
+
+[build-dependencies]
+slint-build = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3"

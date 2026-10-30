@@ -1,0 +1,31 @@
+// 跨模块共享的数据结构（Rust ↔ Slint 边界）
+
+export struct DeviceItemData {
+    label: string,
+    serial: string,
+}
+
+export struct FileItemData {
+    name: string,
+    path: string,
+    is_dir: bool,
+    size_str: string,
+    permissions: string,
+    modified_str: string,
+}
+
+export struct AppItemData {
+    app_name: string,
+    icon: image,
+    has_icon: bool,
+    package_name: string,
+    version_name: string,
+    version_code: string,
+    is_system: bool,
+    apk_path: string,
+}
+
+export struct ScrcpyTagData {
+    text: string,
+    selected: bool,
+}

@@ -1,0 +1,215 @@
+import { Button, ComboBox, LineEdit } from "std-widgets.slint";
+import { App } from "app_state.slint";
+import { InfoCard } from "widgets.slint";
+
+export component OverviewTab inherits VerticalLayout {
+    spacing: 16px;
+
+    Text {
+        text: "系统与硬件参数概览";
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+
+    GridLayout {
+        spacing: 14px;
+        Row {
+            InfoCard {
+                title: "设备品牌 / 厂商";
+                value: App.device_brand;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "设备营销型号";
+                value: App.device_model;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "Android 系统版本";
+                value: App.device_android_version;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+        }
+        Row {
+            InfoCard {
+                title: "SDK API 级别";
+                value: App.device_sdk;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "屏幕物理分辨率";
+                value: App.device_resolution;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "当前剩余电量";
+                value: App.device_battery;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+        }
+        Row {
+            InfoCard {
+                title: "CPU 处理器架构";
+                value: App.device_abi;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "连接序列号";
+                value: App.current_serial;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "设备识别码 (IMEI)";
+                value: App.device_imei;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+        }
+        Row {
+            InfoCard {
+                title: "Wi-Fi IP 地址";
+                value: App.device_wifi_ip;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "Wi-Fi MAC 地址";
+                value: App.device_wifi_mac;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+            InfoCard {
+                title: "蓝牙 MAC 地址";
+                value: App.device_bluetooth_mac;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+        }
+    }
+
+    Text {
+        text: "快捷操作";
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        Button {
+            text: "📷 截取屏幕";
+            enabled: App.current_serial != "未连接";
+            clicked => { App.capture_screenshot(); }
+        }
+
+        ComboBox {
+            width: 130px;
+            model: ["录制 15 秒", "录制 30 秒", "录制 60 秒"];
+            current-index <=> App.record_seconds_index;
+            enabled: App.current_serial != "未连接";
+        }
+
+        Button {
+            text: "🎥 开始录屏";
+            enabled: App.current_serial != "未连接" && !App.is_busy;
+            clicked => { App.capture_screen_recording([15, 30, 60][App.record_seconds_index]); }
+        }
+
+        Button {
+            text: "🐞 生成 Bug 报告";
+            enabled: App.current_serial != "未连接" && !App.is_busy;
+            clicked => { App.capture_bugreport(); }
+        }
+
+        Rectangle { }
+    }
+
+    Text {
+        text: "产物保存到 ~/Downloads/Ikaros/ · 无线调试需设备与电脑在同一网络";
+        font-size: 11px;
+        color: #72778f;
+    }
+
+    Text {
+        text: "无线调试";
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+    }
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        LineEdit {
+            horizontal-stretch: 1;
+            min-width: 0px;
+            preferred-width: 0px;
+            text <=> App.wireless_address;
+            placeholder-text: "输入无线设备地址，例如 192.168.1.8:5555";
+            accepted => { App.wireless_connect(App.wireless_address); }
+        }
+
+        Button {
+            text: "🔗 连接";
+            enabled: !App.is_busy;
+            clicked => { App.wireless_connect(App.wireless_address); }
+        }
+
+        Button {
+            text: "✂️ 断开";
+            enabled: !App.is_busy && App.wireless_address != "";
+            clicked => { App.wireless_disconnect(App.wireless_address); }
+        }
+
+        Button {
+            text: "📡 一键切换无线模式";
+            enabled: App.current_serial != "未连接" && !App.is_busy;
+            clicked => { App.enable_wireless_mode(); }
+        }
+    }
+
+    Text {
+        text: "一键切换会把当前 USB 设备重启到 TCP 模式并自动回连 Wi-Fi IP:5555，之后即可拔掉数据线";
+        font-size: 11px;
+        color: #72778f;
+    }
+
+    if App.wireless_history.length > 0: HorizontalLayout {
+        spacing: 6px;
+
+        Text {
+            text: "最近连接:";
+            font-size: 11px;
+            color: #72778f;
+            vertical-alignment: center;
+        }
+
+        for address in App.wireless_history: Rectangle {
+            border-radius: 10px;
+            background: #232737;
+            border-width: 1px;
+            border-color: #31374d;
+            height: 24px;
+            min-width: 0px;
+            horizontal-stretch: 0;
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                alignment: center;
+
+                Text {
+                    text: address;
+                    font-size: 11px;
+                    color: #9aa3c0;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            TouchArea {
+                clicked => { App.wireless_address = address; }
+            }
+        }
+    }
+
+    Rectangle { }
+}

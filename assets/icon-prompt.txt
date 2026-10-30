@@ -1,0 +1,17 @@
+Ikaros 应用图标生成记录
+
+生成方式：内置 imagegen 工具，透明背景。
+主图：icon_1024.png（生成结果等比缩放到 1024×1024，保留透明通道）。
+设计：深蓝圆角底板、冰蓝银白飞翼，与 Ikaros 名称和深色界面呼应。
+
+完整生成提示词：
+
+Use case: stylized-concept.
+Asset type: final production macOS application icon for Ikaros, an Android device management and screen mirroring developer tool.
+Primary request: Design one beautiful, distinctive premium macOS app icon with a sculpted ascending wing emblem inspired by Icarus. This is the actual isolated icon asset, not an icon mockup or presentation.
+Composition: perfectly square 1024x1024 canvas. A front-facing, straight-on macOS continuous-corner rounded square tile occupies about 84% of the canvas, centered with balanced 8% transparent margins. Keep all artwork and subtle drop shadow inside the canvas. No perspective on the tile.
+Background tile: rich midnight navy blending into saturated deep cobalt at lower right, exceptionally smooth, refined soft edge bevel, a very subtle cyan ambient light near the emblem, no outline border. Actual transparency outside the rounded tile, including its four corners.
+Central emblem: one bold abstract soaring wing, sweeping from lower left toward upper right, occupying about 61% of the tile. Three broad, flowing aerodynamic feather facets unite into one memorable silhouette, with generous dark negative-space channels. The feathers have simple strong geometry and a tactile, gently folded shape. Pearlescent icy silver on upper faces transitions to electric cyan, with cobalt-blue side faces; soft precision bevels and restrained highlights. The large symbol must be clearly recognizable when the entire icon is reduced to 32x32. Broad shapes, no thin detail. Balanced, elegant, calm and capable developer-tool aesthetic.
+Style: immaculate studio-quality 3D icon rendering, minimal Apple macOS app icon craft, shallow dimensional sculptural emblem, satin ceramic and anodized metal. A quiet navy tile with a bright icy cyan wing providing a vivid focal point. Soft studio illumination from upper left. No harsh glossy plastic.
+Text: none.
+Avoid: letters A or I, words, typography, numbers, Android robot, phone illustration, circuit diagrams, extra badges or dots, stars, sparkles, busy texture, excessive bloom, thick outlines, frame around the image, multiple icons, checkerboard background, white or solid background outside the tile, watermark. Deliver exactly one finished icon on actual transparent alpha background.

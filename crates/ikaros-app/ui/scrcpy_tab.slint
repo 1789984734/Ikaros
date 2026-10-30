@@ -1,0 +1,209 @@
+import { Button, CheckBox, ComboBox, LineEdit } from "std-widgets.slint";
+import { App } from "app_state.slint";
+import { ArgTag } from "scrcpy-tag.slint";
+import { ScrcpyParameterHelp } from "scrcpy-parameter-help.slint";
+
+export component ScrcpyTab inherits VerticalLayout {
+    spacing: 12px;
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        Button {
+            text: App.is_mirroring ? "⏹️ 停止当前设备投屏" : "▶️ 一键启动投屏";
+            clicked => {
+                if (App.is_mirroring) {
+                    App.stop_mirroring();
+                } else {
+                    App.start_mirroring();
+                }
+            }
+        }
+
+        Text {
+            text: App.is_mirroring ? "🟢 当前设备正在投屏，切换设备可保留此窗口" : "⚪ 当前设备未在投屏";
+            vertical-alignment: center;
+            font-size: 13px;
+            color: App.is_mirroring ? #7ee787 : #8b92b0;
+        }
+
+        Rectangle { }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            width: 76px;
+            text: "本体路径";
+            vertical-alignment: center;
+            font-size: 13px;
+            color: #8b92b0;
+        }
+
+        LineEdit {
+            text <=> App.scrcpy_path;
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            placeholder-text: "scrcpy 可执行文件路径或其所在目录";
+        }
+
+        Button {
+            text: "📁 浏览";
+            clicked => { App.browse_scrcpy_path(); }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            width: 76px;
+            text: "视频参数";
+            vertical-alignment: center;
+            font-size: 13px;
+            color: #8b92b0;
+        }
+
+        ComboBox {
+            model: ["分辨率: 不限制", "分辨率: 640", "分辨率: 800", "分辨率: 1024", "分辨率: 1280", "分辨率: 1920"];
+            min-width: 100px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            current-index <=> App.scrcpy_max_size;
+        }
+
+        ComboBox {
+            model: ["帧率: 默认", "帧率: 30", "帧率: 60", "帧率: 90", "帧率: 120"];
+            min-width: 100px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            current-index <=> App.scrcpy_max_fps;
+        }
+
+        ComboBox {
+            model: ["码率: 默认", "码率: 4M", "码率: 8M", "码率: 16M", "码率: 32M"];
+            min-width: 100px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            current-index <=> App.scrcpy_bit_rate;
+        }
+
+        ComboBox {
+            model: ["编码: 默认", "编码: h264", "编码: h265", "编码: av1"];
+            min-width: 100px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            current-index <=> App.scrcpy_codec;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            width: 76px;
+            text: "行为开关";
+            vertical-alignment: center;
+            font-size: 13px;
+            color: #8b92b0;
+        }
+
+        CheckBox {
+            text: "转发音频";
+            checked <=> App.scrcpy_audio;
+        }
+
+        CheckBox {
+            text: "投屏期间屏幕常亮";
+            checked <=> App.scrcpy_stay_awake;
+        }
+
+        Rectangle { }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            width: 76px;
+            text: "自定义参数";
+            vertical-alignment: center;
+            font-size: 13px;
+            color: #8b92b0;
+        }
+
+        LineEdit {
+            text <=> App.scrcpy_extra_args;
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            placeholder-text: "以空格分隔透传给 scrcpy, 例如: --new-display=1920x1080 --turn-screen-off --record=file.mp4";
+            edited => { App.scrcpy_extra_args_changed(); }
+        }
+
+        Button {
+            text: "💾 存为 Tag";
+            clicked => { App.add_scrcpy_tag(); }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+
+        Text {
+            width: 76px;
+            text: "参数 Tag";
+            vertical-alignment: center;
+            font-size: 13px;
+            color: #8b92b0;
+        }
+
+        if App.scrcpy_custom_tags.length == 0: Text {
+            text: "暂无保存的参数, 在上方输入后点击 \"存为 Tag\" 保存";
+            font-size: 12px;
+            vertical-alignment: center;
+            color: #5b6078;
+        }
+
+        if App.scrcpy_custom_tags.length > 0: Flickable {
+            height: 30px;
+            min-width: 0px;
+            preferred-width: 0px;
+            horizontal-stretch: 1;
+            content-width: tag-row.preferred-width;
+            content-height: tag-row.preferred-height;
+
+            tag-row := HorizontalLayout {
+                spacing: 8px;
+
+                for tag[idx] in App.scrcpy_custom_tags: ArgTag {
+                    label: tag.text;
+                    description: App.describe_scrcpy_parameter(tag.text);
+                    selected: tag.selected;
+                    toggle => { App.toggle_scrcpy_tag(idx); }
+                    remove => { App.remove_scrcpy_tag(idx); }
+                }
+            }
+        }
+    }
+
+    Text {
+        text: "所有参数直接透传给官方 scrcpy 客户端，独立窗口自带完整键鼠操控、音频与剪贴板能力";
+        min-width: 0px;
+        preferred-width: 0px;
+        font-size: 11px;
+        color: #8b92b0;
+        wrap: word-wrap;
+    }
+
+    ScrcpyParameterHelp {
+        parameters: App.scrcpy_parameter_help;
+        version: App.scrcpy_help_version;
+        copy(text) => { App.copy_clipboard(text); }
+        open-documentation(index) => { App.open_scrcpy_parameter_doc(index); }
+    }
+
+    Rectangle { }
+}
