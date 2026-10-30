@@ -1,7 +1,6 @@
 use crate::{
     mvi::{AppIntent, AppViewState},
-    App,
-    AppWindow, FileItemData,
+    App, AppWindow, FileItemData,
 };
 use ikaros_domain::RemoteFile;
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -126,15 +125,16 @@ fn bind_sort(ui: &AppWindow, tx: UnboundedSender<AppIntent>) {
 }
 
 pub fn apply(ui: &AppWindow, state: &AppViewState) {
-    ui.global::<App>().set_current_dir_path(state.current_dir.clone().into());
-    ui.global::<App>().set_file_status_text(state.file_transfer_message.clone().into());
-    ui.global::<App>().set_file_transfer_percent(state.file_transfer_percent);
+    ui.global::<App>()
+        .set_current_dir_path(state.current_dir.clone().into());
+    ui.global::<App>()
+        .set_file_status_text(state.file_transfer_message.clone().into());
+    ui.global::<App>()
+        .set_file_transfer_percent(state.file_transfer_percent);
     ui.global::<App>().set_file_sort_key(state.file_sort_key);
     ui.global::<App>().set_file_sort_asc(state.file_sort_asc);
     let mut files = state.file_list.clone();
-    files.sort_by(|a, b| {
-        compare_files(a, b, state.file_sort_key, state.file_sort_asc)
-    });
+    files.sort_by(|a, b| compare_files(a, b, state.file_sort_key, state.file_sort_asc));
     let items: Vec<FileItemData> = files
         .iter()
         .map(|file| FileItemData {
@@ -146,21 +146,30 @@ pub fn apply(ui: &AppWindow, state: &AppViewState) {
             modified_str: format_modified_time(file.modified_time).into(),
         })
         .collect();
-    ui.global::<App>().set_file_items(ModelRc::from(Rc::new(VecModel::from(items))));
+    ui.global::<App>()
+        .set_file_items(ModelRc::from(Rc::new(VecModel::from(items))));
 }
 
 /// 目录始终排在文件前面，其余按所选字段与方向比较
 fn compare_files(a: &RemoteFile, b: &RemoteFile, key: i32, asc: bool) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     if a.is_dir != b.is_dir {
-        return if a.is_dir { Ordering::Less } else { Ordering::Greater };
+        return if a.is_dir {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        };
     }
     let ord = match key {
         1 => a.size.cmp(&b.size),
         2 => a.modified_time.cmp(&b.modified_time),
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     };
-    if asc { ord } else { ord.reverse() }
+    if asc {
+        ord
+    } else {
+        ord.reverse()
+    }
 }
 
 /// epoch 秒转本地时间 "MM-dd HH:mm"；0 表示无效
@@ -215,10 +224,7 @@ mod tests {
         let file = entry("zzz.txt", 9, false, 100);
         let dir = entry("aaa", 0, true, 50);
         for asc in [true, false] {
-            assert_eq!(
-                compare_files(&dir, &file, 1, asc),
-                std::cmp::Ordering::Less
-            );
+            assert_eq!(compare_files(&dir, &file, 1, asc), std::cmp::Ordering::Less);
             assert_eq!(
                 compare_files(&file, &dir, 1, asc),
                 std::cmp::Ordering::Greater
@@ -230,7 +236,10 @@ mod tests {
     fn sort_keys_compare_numeric_fields_with_direction() {
         let small = entry("a.txt", 1, false, 100);
         let large = entry("b.txt", 9000, false, 50);
-        assert_eq!(compare_files(&small, &large, 1, true), std::cmp::Ordering::Less);
+        assert_eq!(
+            compare_files(&small, &large, 1, true),
+            std::cmp::Ordering::Less
+        );
         assert_eq!(
             compare_files(&small, &large, 1, false),
             std::cmp::Ordering::Greater

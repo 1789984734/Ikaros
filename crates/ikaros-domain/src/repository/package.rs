@@ -1,7 +1,7 @@
-use std::path::Path;
-use async_trait::async_trait;
 use crate::entity::{AppFilterType, AppInfo};
 use crate::error::DomainError;
+use async_trait::async_trait;
+use std::path::Path;
 
 /// 应用包管理领域仓储契约
 #[async_trait]
@@ -32,7 +32,8 @@ pub trait PackageRepository: Send + Sync {
     ) -> Result<(), DomainError>;
 
     /// 清除应用数据 (pm clear)
-    async fn clear_package_data(&self, serial: &str, package_name: &str) -> Result<(), DomainError>;
+    async fn clear_package_data(&self, serial: &str, package_name: &str)
+        -> Result<(), DomainError>;
 
     /// 启动应用 (Launcher Activity)
     async fn launch_package(&self, serial: &str, package_name: &str) -> Result<(), DomainError>;

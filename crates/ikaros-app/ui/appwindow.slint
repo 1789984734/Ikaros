@@ -70,10 +70,12 @@ export component AppWindow inherits Window {
 
 
             Text {
-                text: "连接的设备 (" + App.device_list.length + ")";
+                height: 32px;
+                text: "已连接设备";
                 font-size: 11px;
                 color: #72778f;
                 font-weight: 600;
+                vertical-alignment: center;
             }
 
 
@@ -99,6 +101,8 @@ export component AppWindow inherits Window {
                         y: (parent.height - self.height) / 2;
                     }
                     device-name := Text {
+                        y: (parent.height - self.height) / 2 + 1.5px;
+                        height: self.preferred-height;
                         min-width: 0px;
                         preferred-width: 0px;
                         horizontal-stretch: 1;
@@ -143,8 +147,8 @@ export component AppWindow inherits Window {
                         clicked => { App.active_tab = 0; App.switch_tab(0); }
                     }
                     NavItem {
-                        icon: "🖥️";
-                        title: "实时投屏操控";
+                        glyph: @image-url("icons/scrcpy.svg");
+                        title: "Scrcpy";
                         active: App.active_tab == 1;
                         clicked => { App.active_tab = 1; App.switch_tab(1); }
                     }

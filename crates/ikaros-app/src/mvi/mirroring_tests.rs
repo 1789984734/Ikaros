@@ -1,7 +1,9 @@
 use super::*;
 use ikaros_adb::AdbClient;
 use ikaros_domain::{Device, DeviceStatus};
-use ikaros_usecase::{AppUseCases, DeviceUseCases, FileUseCases, LogcatUseCases, PerformanceUseCases};
+use ikaros_usecase::{
+    AppUseCases, DeviceUseCases, FileUseCases, LogcatUseCases, PerformanceUseCases,
+};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 

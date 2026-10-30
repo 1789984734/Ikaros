@@ -1,10 +1,9 @@
-use slint::ComponentHandle;
 use crate::{
-    App,
     mvi::{AppIntent, AppViewState},
-    AppWindow, PerformanceChart, PerformanceMetric,
+    App, AppWindow, PerformanceChart, PerformanceMetric,
 };
 use ikaros_domain::PerformanceSample;
+use slint::ComponentHandle;
 use slint::{Color, ModelRc, SharedString, VecModel};
 use std::{collections::VecDeque, rc::Rc};
 use tokio::sync::mpsc::UnboundedSender;
@@ -14,9 +13,10 @@ pub fn bind(ui: &AppWindow, tx: UnboundedSender<AppIntent>) {
     ui.global::<App>().on_toggle_performance(move || {
         let _ = toggle_tx.send(AppIntent::TogglePerformance);
     });
-    ui.global::<App>().on_select_performance_package(move |package| {
-        let _ = tx.send(AppIntent::SelectPerformancePackage(package.to_string()));
-    });
+    ui.global::<App>()
+        .on_select_performance_package(move |package| {
+            let _ = tx.send(AppIntent::SelectPerformancePackage(package.to_string()));
+        });
 }
 
 pub fn apply_choices(ui: &AppWindow, state: &AppViewState) {
@@ -48,19 +48,26 @@ pub fn apply_choices(ui: &AppWindow, state: &AppViewState) {
         .iter()
         .position(|p| p.as_str() == state.performance.package)
         .unwrap_or(0);
-    ui.global::<App>().set_performance_selected_index(index as i32);
+    ui.global::<App>()
+        .set_performance_selected_index(index as i32);
     ui.global::<App>().set_performance_packages(model(packages));
-    ui.global::<App>().set_performance_package_labels(model(labels));
+    ui.global::<App>()
+        .set_performance_package_labels(model(labels));
 }
 
 pub fn apply(ui: &AppWindow, state: &AppViewState) {
     let performance = &state.performance;
     let sample = performance.history.back().cloned().unwrap_or_default();
-    ui.global::<App>().set_performance_running(performance.is_running);
-    ui.global::<App>().set_performance_has_error(performance.has_error);
-    ui.global::<App>().set_performance_can_export(!performance.history.is_empty());
-    ui.global::<App>().set_performance_message(performance.message.clone().into());
-    ui.global::<App>().set_performance_package(performance.package.clone().into());
+    ui.global::<App>()
+        .set_performance_running(performance.is_running);
+    ui.global::<App>()
+        .set_performance_has_error(performance.has_error);
+    ui.global::<App>()
+        .set_performance_can_export(!performance.history.is_empty());
+    ui.global::<App>()
+        .set_performance_message(performance.message.clone().into());
+    ui.global::<App>()
+        .set_performance_package(performance.package.clone().into());
     let status = if !performance.is_running || performance.history.is_empty() {
         performance.message.clone()
     } else {
@@ -69,7 +76,8 @@ pub fn apply(ui: &AppWindow, state: &AppViewState) {
             performance.history.len()
         )
     };
-    ui.global::<App>().set_performance_sample_status(status.into());
+    ui.global::<App>()
+        .set_performance_sample_status(status.into());
     let app_status = if performance.history.is_empty() {
         "正在等待应用数据".into()
     } else if !sample.process_list_available {
@@ -88,10 +96,14 @@ pub fn apply(ui: &AppWindow, state: &AppViewState) {
                 .join(", ")
         )
     };
-    ui.global::<App>().set_performance_app_status(app_status.into());
-    ui.global::<App>().set_performance_device_metrics(model(device_metrics(&sample)));
-    ui.global::<App>().set_performance_app_metrics(model(app_metrics(&sample)));
-    ui.global::<App>().set_performance_charts(model(charts(&performance.history)));
+    ui.global::<App>()
+        .set_performance_app_status(app_status.into());
+    ui.global::<App>()
+        .set_performance_device_metrics(model(device_metrics(&sample)));
+    ui.global::<App>()
+        .set_performance_app_metrics(model(app_metrics(&sample)));
+    ui.global::<App>()
+        .set_performance_charts(model(charts(&performance.history)));
 }
 
 fn model<T: Clone + 'static>(items: Vec<T>) -> ModelRc<T> {

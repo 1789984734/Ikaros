@@ -1,6 +1,6 @@
+use ikaros_domain::{AppFilterType, AppInfo, DomainError, PackageRepository};
 use std::path::Path;
 use std::sync::Arc;
-use ikaros_domain::{AppFilterType, AppInfo, DomainError, PackageRepository};
 
 /// 应用管理业务用例
 pub struct AppUseCases {
@@ -19,7 +19,11 @@ impl AppUseCases {
         filter: AppFilterType,
     ) -> Result<Vec<AppInfo>, DomainError> {
         let mut list = self.package_repo.list_packages(serial, filter).await?;
-        list.sort_by(|a, b| a.package_name.to_lowercase().cmp(&b.package_name.to_lowercase()));
+        list.sort_by(|a, b| {
+            a.package_name
+                .to_lowercase()
+                .cmp(&b.package_name.to_lowercase())
+        });
         Ok(list)
     }
 
@@ -36,8 +40,14 @@ impl AppUseCases {
     }
 
     /// 用例：清除应用数据
-    pub async fn clear_app_data(&self, serial: &str, package_name: &str) -> Result<(), DomainError> {
-        self.package_repo.clear_package_data(serial, package_name).await
+    pub async fn clear_app_data(
+        &self,
+        serial: &str,
+        package_name: &str,
+    ) -> Result<(), DomainError> {
+        self.package_repo
+            .clear_package_data(serial, package_name)
+            .await
     }
 
     /// 用例：启动应用

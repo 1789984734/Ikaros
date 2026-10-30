@@ -1,8 +1,8 @@
+use ikaros_adb::AdbClient;
+use ikaros_domain::{DeviceRepository, LogLevel, LogcatRepository};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio::time::timeout;
-use ikaros_adb::AdbClient;
-use ikaros_domain::{DeviceRepository, LogLevel, LogcatRepository};
 
 #[tokio::test]
 async fn test_logcat_parsing_and_live_stream() {
@@ -33,7 +33,9 @@ async fn test_logcat_parsing_and_live_stream() {
     let adb_clone = adb.clone();
     let serial_clone = serial.clone();
     tokio::spawn(async move {
-        let _ = adb_clone.start_logcat_stream(&serial_clone, tx, stop_rx).await;
+        let _ = adb_clone
+            .start_logcat_stream(&serial_clone, tx, stop_rx)
+            .await;
     });
 
     let mut count = 0;

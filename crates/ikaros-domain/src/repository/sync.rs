@@ -1,14 +1,18 @@
+use crate::entity::{RemoteFile, TransferProgress};
+use crate::error::DomainError;
 use async_trait::async_trait;
 use std::path::Path;
 use tokio::sync::mpsc::UnboundedSender;
-use crate::entity::{RemoteFile, TransferProgress};
-use crate::error::DomainError;
 
 /// ADB Sync 文件传输与浏览接口契约
 #[async_trait]
 pub trait SyncRepository: Send + Sync {
     /// 列出远程指定目录下的所有文件和子目录
-    async fn list_directory(&self, serial: &str, path: &str) -> Result<Vec<RemoteFile>, DomainError>;
+    async fn list_directory(
+        &self,
+        serial: &str,
+        path: &str,
+    ) -> Result<Vec<RemoteFile>, DomainError>;
 
     /// 从远程设备拉取文件到本地计算机 (Pull)
     async fn pull_file(

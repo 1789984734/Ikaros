@@ -63,20 +63,20 @@ fn device_context_menu_copies_the_clicked_serial_without_switching_devices() {
     window.set_size(slint::PhysicalSize::new(1120, 740));
     render(&window);
 
-    click(ui.window(), 40., 85., PointerEventButton::Right);
+    click(ui.window(), 40., 103., PointerEventButton::Right);
     render(&window);
     assert_eq!(selected.get(), -1);
     assert_eq!(ui.global::<App>().get_selected_device_index(), 0);
-    click(ui.window(), 55., 100., PointerEventButton::Left);
+    click(ui.window(), 55., 118., PointerEventButton::Left);
     assert_eq!(*copied.borrow(), ["192.0.2.10:5555"]);
     assert_eq!(selected.get(), -1);
 
-    click(ui.window(), 40., 85., PointerEventButton::Left);
+    click(ui.window(), 40., 103., PointerEventButton::Left);
     assert_eq!(selected.get(), 1);
     assert_eq!(ui.global::<App>().get_selected_device_index(), 1);
-    click(ui.window(), 40., 45., PointerEventButton::Right);
+    click(ui.window(), 40., 63., PointerEventButton::Right);
     render(&window);
-    click(ui.window(), 55., 60., PointerEventButton::Left);
+    click(ui.window(), 55., 78., PointerEventButton::Left);
     assert_eq!(*copied.borrow(), ["192.0.2.10:5555", "USB-SERIAL-123"]);
     assert_eq!(selected.get(), 1);
     assert_eq!(ui.global::<App>().get_selected_device_index(), 1);

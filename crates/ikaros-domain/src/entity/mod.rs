@@ -8,4 +8,6 @@ pub use app::{AppFilterType, AppInfo};
 pub use device::{Device, DeviceDetail, DeviceStatus};
 pub use file::{RemoteFile, TransferProgress};
 pub use logcat::{LogEntry, LogLevel};
-pub use performance::{CpuCounters, FrameCounters, PerformanceReading, PerformanceSample, ProcessCounters};
+pub use performance::{
+    CpuCounters, FrameCounters, PerformanceReading, PerformanceSample, ProcessCounters,
+};

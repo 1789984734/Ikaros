@@ -1,11 +1,11 @@
+use async_trait::async_trait;
+use ikaros_domain::{Device, DeviceDetail, DeviceRepository, DeviceStatus, DomainError};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::time::timeout;
 use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
-use ikaros_domain::{Device, DeviceDetail, DeviceRepository, DeviceStatus, DomainError};
-use async_trait::async_trait;
+use tokio::time::timeout;
 use tracing::{debug, warn};
 
 /// 将远程路径包裹成可安全进入 shell 的单引号字面量
@@ -38,7 +38,9 @@ impl AdbClient {
         }
 
         // 尝试自动唤起后台 ADB 守护服务
-        let _ = std::process::Command::new("adb").arg("start-server").output();
+        let _ = std::process::Command::new("adb")
+            .arg("start-server")
+            .output();
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         match timeout(Duration::from_secs(3), TcpStream::connect(self.server_addr)).await {
@@ -47,16 +49,22 @@ impl AdbClient {
                 "连接 ADB 服务 ({}) 失败: {}",
                 self.server_addr, e
             ))),
-            Err(_) => Err(DomainError::AdbConnectionFailed("连接 ADB 服务超时".to_string())),
+            Err(_) => Err(DomainError::AdbConnectionFailed(
+                "连接 ADB 服务超时".to_string(),
+            )),
         }
     }
 
     /// 向 ADB Server 发送带 4 字节长度前缀的请求并读取状态
-    pub(crate) async fn write_request(stream: &mut TcpStream, command: &str) -> Result<(), DomainError> {
+    pub(crate) async fn write_request(
+        stream: &mut TcpStream,
+        command: &str,
+    ) -> Result<(), DomainError> {
         let request = format!("{:04x}{}", command.len(), command);
-        stream.write_all(request.as_bytes()).await.map_err(|e| {
-            DomainError::AdbConnectionFailed(format!("发送命令失败: {}", e))
-        })?;
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .map_err(|e| DomainError::AdbConnectionFailed(format!("发送命令失败: {}", e)))?;
         Self::check_status(stream).await
     }
 
@@ -71,7 +79,10 @@ impl AdbClient {
             b"OKAY" => Ok(()),
             b"FAIL" => {
                 let err_msg = Self::read_length_prefixed_string(stream).await?;
-                Err(DomainError::AdbConnectionFailed(format!("ADB 返回错误: {}", err_msg)))
+                Err(DomainError::AdbConnectionFailed(format!(
+                    "ADB 返回错误: {}",
+                    err_msg
+                )))
             }
             other => Err(DomainError::ParseError(format!(
                 "未知的 ADB 状态码: {:?}",
@@ -83,9 +94,10 @@ impl AdbClient {
     /// 读取 4 字节十六进制长度前缀的内容
     async fn read_length_prefixed_string(stream: &mut TcpStream) -> Result<String, DomainError> {
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await.map_err(|e| {
-            DomainError::ParseError(format!("读取长度前缀失败: {}", e))
-        })?;
+        stream
+            .read_exact(&mut len_buf)
+            .await
+            .map_err(|e| DomainError::ParseError(format!("读取长度前缀失败: {}", e)))?;
 
         let hex_str = std::str::from_utf8(&len_buf)
             .map_err(|e| DomainError::ParseError(format!("无效的十六进制长度编码: {}", e)))?;
@@ -93,11 +105,13 @@ impl AdbClient {
             .map_err(|e| DomainError::ParseError(format!("解析十六进制长度失败: {}", e)))?;
 
         let mut data = vec![0u8; len];
-        stream.read_exact(&mut data).await.map_err(|e| {
-            DomainError::ParseError(format!("读取数据负载失败: {}", e))
-        })?;
+        stream
+            .read_exact(&mut data)
+            .await
+            .map_err(|e| DomainError::ParseError(format!("读取数据负载失败: {}", e)))?;
 
-        String::from_utf8(data).map_err(|e| DomainError::ParseError(format!("UTF-8 解析失败: {}", e)))
+        String::from_utf8(data)
+            .map_err(|e| DomainError::ParseError(format!("UTF-8 解析失败: {}", e)))
     }
 
     /// 解析 `host:devices-l` 的返回行
@@ -148,7 +162,10 @@ impl AdbClient {
                 continue;
             };
             let key = key_part.trim_start_matches('[').trim().to_string();
-            let value = value_part.strip_suffix(']').unwrap_or(value_part).to_string();
+            let value = value_part
+                .strip_suffix(']')
+                .unwrap_or(value_part)
+                .to_string();
             if !key.is_empty() {
                 map.insert(key, value);
             }
@@ -271,14 +288,19 @@ impl AdbClient {
     }
 
     /// 让 USB 设备重启 adbd 并进入 TCP 无线模式
-    pub(crate) async fn enable_tcpip_raw(&self, serial: &str, port: u16) -> Result<String, DomainError> {
+    pub(crate) async fn enable_tcpip_raw(
+        &self,
+        serial: &str,
+        port: u16,
+    ) -> Result<String, DomainError> {
         let mut stream = self.connect().await?;
         Self::write_request(&mut stream, &format!("host:transport:{}", serial)).await?;
         Self::write_request(&mut stream, &format!("tcpip:{}", port)).await?;
         let mut output = Vec::new();
-        stream.read_to_end(&mut output).await.map_err(|e| {
-            DomainError::ShellExecutionFailed(format!("读取 tcpip 响应失败: {e}"))
-        })?;
+        stream
+            .read_to_end(&mut output)
+            .await
+            .map_err(|e| DomainError::ShellExecutionFailed(format!("读取 tcpip 响应失败: {e}")))?;
         Ok(String::from_utf8_lossy(&output).trim().to_string())
     }
 
@@ -405,14 +427,19 @@ impl DeviceRepository for AdbClient {
 
     /// 读取指定的 Android 系统属性 (getprop)
     async fn get_property(&self, serial: &str, prop_name: &str) -> Result<String, DomainError> {
-        let out = self.execute_shell(serial, &format!("getprop {}", prop_name)).await?;
+        let out = self
+            .execute_shell(serial, &format!("getprop {}", prop_name))
+            .await?;
         Ok(out.trim().to_string())
     }
 
     /// 查询设备软硬件详情信息
     async fn get_device_detail(&self, serial: &str) -> Result<DeviceDetail, DomainError> {
         // 一次 getprop 全量读取并解析，避免十几次独立 shell 往返
-        let props = self.execute_shell(serial, "getprop").await.unwrap_or_default();
+        let props = self
+            .execute_shell(serial, "getprop")
+            .await
+            .unwrap_or_default();
         let prop_map = Self::parse_getprop(&props);
         let prop = |name: &str| prop_map.get(name).cloned().unwrap_or_default();
         let brand = prop("ro.product.brand");
@@ -422,7 +449,10 @@ impl DeviceRepository for AdbClient {
         let cpu_abi = prop("ro.product.cpu.abi");
 
         // 获取屏幕物理分辨率 (wm size)
-        let wm_size = self.execute_shell(serial, "wm size").await.unwrap_or_default();
+        let wm_size = self
+            .execute_shell(serial, "wm size")
+            .await
+            .unwrap_or_default();
         let screen_resolution = wm_size
             .lines()
             .find_map(|line| {
@@ -435,7 +465,10 @@ impl DeviceRepository for AdbClient {
             .unwrap_or_else(|| "未知".to_string());
 
         // 获取屏幕像素密度 (wm density)
-        let wm_density = self.execute_shell(serial, "wm density").await.unwrap_or_default();
+        let wm_density = self
+            .execute_shell(serial, "wm density")
+            .await
+            .unwrap_or_default();
         let screen_density = wm_density
             .lines()
             .find_map(|line| {
@@ -448,23 +481,22 @@ impl DeviceRepository for AdbClient {
             .unwrap_or(0);
 
         // 获取电池电量 (dumpsys battery)
-        let battery_dump = self.execute_shell(serial, "dumpsys battery").await.unwrap_or_default();
-        let battery_level = battery_dump
-            .lines()
-            .find_map(|line| {
-                let trimmed = line.trim();
-                if trimmed.starts_with("level: ") {
-                    trimmed["level: ".len()..].parse::<u8>().ok()
-                } else {
-                    None
-                }
-            });
+        let battery_dump = self
+            .execute_shell(serial, "dumpsys battery")
+            .await
+            .unwrap_or_default();
+        let battery_level = battery_dump.lines().find_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.starts_with("level: ") {
+                trimmed["level: ".len()..].parse::<u8>().ok()
+            } else {
+                None
+            }
+        });
 
         // 获取设备识别码 IMEI (优先通过 service call 与系统属性探测)
-        let (imei, network) = tokio::join!(
-            self.get_imei(serial),
-            self.device_network_info(serial),
-        );
+        let (imei, network) =
+            tokio::join!(self.get_imei(serial), self.device_network_info(serial),);
 
         Ok(DeviceDetail {
             serial: serial.to_string(),
@@ -491,7 +523,10 @@ impl DeviceRepository for AdbClient {
         remote_abstract: &str,
     ) -> Result<(), DomainError> {
         let mut stream = self.connect().await?;
-        let cmd = format!("host-serial:{}:forward:tcp:{};{}", serial, local_port, remote_abstract);
+        let cmd = format!(
+            "host-serial:{}:forward:tcp:{};{}",
+            serial, local_port, remote_abstract
+        );
         Self::write_request(&mut stream, &cmd).await
     }
 
@@ -515,7 +550,8 @@ impl DeviceRepository for AdbClient {
         chunk_tx: UnboundedSender<String>,
         stop_rx: Receiver<bool>,
     ) -> Result<(), DomainError> {
-        self.stream_shell_raw(serial, command, chunk_tx, stop_rx).await
+        self.stream_shell_raw(serial, command, chunk_tx, stop_rx)
+            .await
     }
 
     async fn exec_to_file(
@@ -525,7 +561,8 @@ impl DeviceRepository for AdbClient {
         local_path: &std::path::Path,
         stop_rx: Receiver<bool>,
     ) -> Result<u64, DomainError> {
-        self.exec_to_file_raw(serial, command, local_path, stop_rx).await
+        self.exec_to_file_raw(serial, command, local_path, stop_rx)
+            .await
     }
 
     async fn connect_remote(&self, address: &str) -> Result<String, DomainError> {

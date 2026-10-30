@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use std::sync::Arc;
 use super::{AppIntent, AppStore};
 use ikaros_domain::{AppFilterType, AppInfo};
+use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::error;
 
 impl AppStore {
@@ -22,9 +22,15 @@ impl AppStore {
         let tx = self.intent_sender.clone();
 
         tokio::spawn(async move {
-            let result = usecases.get_installed_packages(&serial, filter).await
+            let result = usecases
+                .get_installed_packages(&serial, filter)
+                .await
                 .map_err(|error| error.to_string());
-            let _ = tx.send(AppIntent::PackagesLoaded { serial, filter, result });
+            let _ = tx.send(AppIntent::PackagesLoaded {
+                serial,
+                filter,
+                result,
+            });
         });
     }
 
@@ -114,9 +120,13 @@ impl AppStore {
             self.state.status_message = "请先连接或选择一台设备再卸载应用".into();
             return;
         }
-        let Some(app) = self.state.app_list.iter()
+        let Some(app) = self
+            .state
+            .app_list
+            .iter()
             .find(|app| app.package_name == pkg)
-            .cloned() else {
+            .cloned()
+        else {
             self.state.status_message = "应用列表已变化，请刷新后重试".into();
             return;
         };
@@ -126,7 +136,8 @@ impl AppStore {
         let usecases = Arc::clone(&self.app_usecases);
         let tx = self.intent_sender.clone();
         tokio::spawn(async move {
-            let result = usecases.uninstall_app(&serial, &app)
+            let result = usecases
+                .uninstall_app(&serial, &app)
                 .await
                 .map_err(|error| error.to_string());
             let _ = tx.send(AppIntent::AppUninstalled {
@@ -137,15 +148,23 @@ impl AppStore {
         });
     }
 
-    pub(super) fn on_app_uninstalled(&mut self, serial: String, package_name: String, result: Result<(), String>) {
+    pub(super) fn on_app_uninstalled(
+        &mut self,
+        serial: String,
+        package_name: String,
+        result: Result<(), String>,
+    ) {
         if serial != self.state.current_serial() {
             return;
         }
         self.state.is_busy = false;
         let message = match result {
             Ok(()) => {
-                self.state.app_list.retain(|app| app.package_name != package_name);
-                let _ = self.intent_sender
+                self.state
+                    .app_list
+                    .retain(|app| app.package_name != package_name);
+                let _ = self
+                    .intent_sender
                     .send(AppIntent::LoadPackages(self.state.app_filter));
                 format!("已成功卸载应用: {package_name}")
             }
@@ -163,7 +182,10 @@ impl AppStore {
         let local_target = PathBuf::from(format!("{}/Downloads/{}.apk", home, package_name));
 
         tokio::spawn(async move {
-            match file_usecases.pull_file(&serial, &remote_apk_path, &local_target, None).await {
+            match file_usecases
+                .pull_file(&serial, &remote_apk_path, &local_target, None)
+                .await
+            {
                 Ok(_) => {
                     let _ = tx.send(AppIntent::SetStatusMessage {
                         message: format!("APK 已成功提取至: {:?}", local_target),

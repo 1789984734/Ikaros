@@ -1,7 +1,7 @@
-use async_trait::async_trait;
-use tokio::sync::{mpsc::Sender, watch::Receiver};
 use crate::entity::LogEntry;
 use crate::error::DomainError;
+use async_trait::async_trait;
+use tokio::sync::{mpsc::Sender, watch::Receiver};
 
 /// Logcat 日志仓储契约
 #[async_trait]

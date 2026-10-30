@@ -1,6 +1,6 @@
+use super::{AppIntent, AppStore};
 use std::path::PathBuf;
 use std::sync::Arc;
-use super::{AppIntent, AppStore};
 use tracing::error;
 
 impl AppStore {
@@ -37,7 +37,11 @@ impl AppStore {
         });
     }
 
-    pub(super) fn on_directory_loaded(&mut self, current_path: String, files: Vec<ikaros_domain::RemoteFile>) {
+    pub(super) fn on_directory_loaded(
+        &mut self,
+        current_path: String,
+        files: Vec<ikaros_domain::RemoteFile>,
+    ) {
         self.state.is_busy = false;
         self.state.current_dir = current_path;
         self.state.file_transfer_message.clear();
@@ -58,7 +62,9 @@ impl AppStore {
         }
         if let Some(pos) = current.rfind('/') {
             let parent = if pos == 0 { "/" } else { &current[..pos] };
-            let _ = self.intent_sender.send(AppIntent::BrowseDirectory(parent.to_string()));
+            let _ = self
+                .intent_sender
+                .send(AppIntent::BrowseDirectory(parent.to_string()));
         }
     }
 

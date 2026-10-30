@@ -17,8 +17,8 @@
 
 2. **外部 Scrcpy 一键投屏**
    - 直接调用本机官方 **scrcpy** 客户端（可自定义本体路径），投屏窗口由官方程序独立承载，天然支持音频、h265/av1、剪贴板与完整键鼠操控。
-   - 本体路径支持手输，也可点击"浏览"按钮通过系统 Finder 原生文件夹选择器直接定位。
-   - scrcpy 本体路径修改后立即持久化（macOS 保存于 `~/Library/Application Support/Ikaros/config.json`），重启应用自动恢复；也可在「设置」页统一管理。
+   - 本体路径在「设置」页统一管理，支持手输，也可点击"浏览"按钮通过系统 Finder 原生文件夹选择器直接定位。
+   - scrcpy 本体路径修改后立即持久化（macOS 保存于 `~/Library/Application Support/Ikaros/config.json`），重启应用自动恢复。
    - 可视化参数：分辨率上限、帧率、码率、视频编码、音频转发、屏幕常亮，一键传递给官方客户端。
    - 自定义参数输入框：任意 scrcpy 命令行参数以空格分隔透传（支持引号包裹含空格的路径），例如 `--new-display=1920x1080 --turn-screen-off`。
    - 自定义参数 Tag：输入参数后点击"存为 Tag"即可保存（一个 Tag 对应一个参数，持久化到本地配置），点击 Tag 追加/移除参数，Tag 上的叉号可删除。悬停显示参数作用，支持 `-Sw` 等短参数组合。
@@ -95,7 +95,20 @@ python3 scripts/build_package_helper.py
 
 macOS 提供原生“窗口”菜单，支持最小化、缩放，以及当前系统可用的居中、填充与窗口平铺操作；窗口位置与大小会自动保存，重新启动时恢复。
 
-### 2. 打包生成原生 macOS 应用程序 (.app)
+### 2. Rust 代码格式
+所有 Rust 代码统一使用 stable Rust 工具链自带的 `rustfmt` 默认规则。修改 Rust 代码后格式化整个工作区：
+```bash
+cargo fmt --all
+```
+
+交付前必须通过格式门禁：
+```bash
+cargo fmt --all -- --check
+```
+
+格式门禁由本地开发流程和 Agent 强制执行，不依赖 GitHub Actions 或其他 CI 服务。门禁不设置 baseline 或忽略列表，新增代码必须全部符合规范；Agent 开发约定同时记录在根目录 `AGENTS.md`。
+
+### 3. 打包生成原生 macOS 应用程序 (.app)
 项目自带一键打包脚本，会自动进行 Release 优化编译、生成 macOS 规范的 Retina 多分辨率图标（`AppIcon.icns`）并装配到系统应用程序：
 ```bash
 ./scripts/build_app.sh

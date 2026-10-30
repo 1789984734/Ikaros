@@ -21,7 +21,7 @@ export component FileTab inherits VerticalLayout {
         }
 
         Button {
-            text: "📁+ 新建文件夹";
+            text: "📁 新建文件夹";
             enabled: App.current_serial != "未连接";
             clicked => {
                 App.file_input_visible = true;

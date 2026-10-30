@@ -45,7 +45,9 @@ pub fn load() -> AppConfig {
 
 /// 全量保存配置；失败仅记录日志，不打断交互
 pub fn save(config: &AppConfig) {
-    let Some(path) = config_file_path() else { return };
+    let Some(path) = config_file_path() else {
+        return;
+    };
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -103,7 +105,9 @@ mod tests {
         let path = dir.path().join("config.json");
         std::fs::write(&path, "not json").unwrap();
         assert_eq!(
-            std::fs::read_to_string(&path).ok().and_then(|raw| serde_json::from_str::<AppConfig>(&raw).ok()),
+            std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|raw| serde_json::from_str::<AppConfig>(&raw).ok()),
             None
         );
     }

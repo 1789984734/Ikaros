@@ -76,7 +76,9 @@ async fn long_capture_survives_restart_and_off_cleans_only_generated_files() {
     for (number, line) in text.lines().enumerate() {
         assert_eq!(
             line,
-            format!("10-28 12:34:56.789   123   456 I [com.example.app] LongCapture: 中文日志 {number}")
+            format!(
+                "10-28 12:34:56.789   123   456 I [com.example.app] LongCapture: 中文日志 {number}"
+            )
         );
     }
 

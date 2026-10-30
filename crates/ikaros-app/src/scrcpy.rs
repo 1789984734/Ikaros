@@ -80,7 +80,10 @@ pub async fn launch_scrcpy(
         bin = bin.join("scrcpy");
     }
     if !bin.is_file() {
-        return Err(format!("scrcpy 本体不存在或不可执行: {}", options.binary_path));
+        return Err(format!(
+            "scrcpy 本体不存在或不可执行: {}",
+            options.binary_path
+        ));
     }
 
     let mut cmd = tokio::process::Command::new(&bin);

@@ -1,6 +1,6 @@
-use async_trait::async_trait;
 use crate::entity::{Device, DeviceDetail};
 use crate::error::DomainError;
+use async_trait::async_trait;
 use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
 
 /// 设备操作领域仓储契约（接口定义）

@@ -3,6 +3,7 @@ import { Button } from "std-widgets.slint";
 
 export component NavItem inherits Rectangle {
     in property <string> icon: "";
+    in property <image> glyph;
     in property <string> title: "";
     in property <bool> active: false;
     callback clicked();
@@ -21,7 +22,15 @@ export component NavItem inherits Rectangle {
         padding-right: 14px;
         spacing: 12px;
 
-        Text {
+        if root.glyph.width > 0: Image {
+            y: (parent.height - self.height) / 2;
+            width: 20px;
+            height: 20px;
+            source: root.glyph;
+            image-fit: contain;
+        }
+
+        if root.glyph.width == 0: Text {
             text: root.icon;
             font-size: 16px;
             vertical-alignment: center;

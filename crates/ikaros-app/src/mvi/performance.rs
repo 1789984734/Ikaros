@@ -126,7 +126,8 @@ impl AppStore {
         match result {
             Ok(packages) => self.state.performance.packages = Arc::new(packages),
             Err(error) => {
-                self.state.performance.message = format!("应用列表读取失败：{error}，可直接输入包名");
+                self.state.performance.message =
+                    format!("应用列表读取失败：{error}，可直接输入包名");
                 self.state.performance.has_error = true;
             }
         }
@@ -149,7 +150,11 @@ impl AppStore {
         let package = self.state.performance.package.clone();
         let tx = self.intent_sender.clone();
         tokio::spawn(async move {
-            let label = if package.is_empty() { "device" } else { package.as_str() };
+            let label = if package.is_empty() {
+                "device"
+            } else {
+                package.as_str()
+            };
             let message = match super::device_store::tool_output_path(label, "perf", "csv") {
                 Some(path) => match export_csv(&history, &path) {
                     Ok(()) => format!("性能数据已导出: {:?}", path),
@@ -157,12 +162,18 @@ impl AppStore {
                 },
                 None => "无法确定保存目录".into(),
             };
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
         });
     }
 }
 
-fn export_csv(history: &std::sync::Arc<std::collections::VecDeque<PerformanceSample>>, path: &std::path::Path) -> Result<(), std::io::Error> {
+fn export_csv(
+    history: &std::sync::Arc<std::collections::VecDeque<PerformanceSample>>,
+    path: &std::path::Path,
+) -> Result<(), std::io::Error> {
     let mut csv = String::from(
         "elapsed_seconds,cpu_percent,memory_used_kb,memory_total_kb,battery_percent,battery_temperature_c,\
          network_rx_bytes_per_sec,network_tx_bytes_per_sec,app_cpu_percent,app_pss_kb,app_ui_fps,app_jank_percent\n",
@@ -173,8 +184,14 @@ fn export_csv(history: &std::sync::Arc<std::collections::VecDeque<PerformanceSam
             "{:.2},{},{},{},{},{},{},{},{},{},{},{}\n",
             sample.elapsed_seconds,
             field(sample.cpu_percent),
-            sample.memory_used_kb.map(|n| n.to_string()).unwrap_or_default(),
-            sample.memory_total_kb.map(|n| n.to_string()).unwrap_or_default(),
+            sample
+                .memory_used_kb
+                .map(|n| n.to_string())
+                .unwrap_or_default(),
+            sample
+                .memory_total_kb
+                .map(|n| n.to_string())
+                .unwrap_or_default(),
             field(sample.battery_percent),
             field(sample.battery_temperature_c),
             field(sample.network_rx_rate_bps.map(|n| n as f64)),

@@ -1,9 +1,9 @@
+use ikaros_domain::PerformanceSample;
 use ikaros_domain::{AppFilterType, AppInfo, Device, DeviceDetail, LogEntry, LogLevel, RemoteFile};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
 };
-use ikaros_domain::PerformanceSample;
 
 #[derive(Clone, Default)]
 pub struct PerformanceState {

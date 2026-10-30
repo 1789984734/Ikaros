@@ -1,8 +1,7 @@
 //! 投屏页面自定义参数 Tag 的交互绑定: 输入框内容与 Tag 列表联动并持久化
 
 use crate::{
-    App,
-    scrcpy, scrcpy_parameters, scrcpy_tags, AppWindow, ScrcpyParameterInfo, ScrcpyTagData,
+    scrcpy, scrcpy_parameters, scrcpy_tags, App, AppWindow, ScrcpyParameterInfo, ScrcpyTagData,
 };
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::collections::HashSet;
@@ -36,7 +35,8 @@ fn restore_tags(
             selected: false,
         });
     }
-    ui.global::<App>().set_scrcpy_custom_tags(ModelRc::from(model.clone()));
+    ui.global::<App>()
+        .set_scrcpy_custom_tags(ModelRc::from(model.clone()));
     sync_tag_selection(ui, &model);
     model
 }
@@ -54,8 +54,10 @@ fn bind_parameter_help(ui: &AppWindow) {
             description: parameter.description.into(),
         })
         .collect::<Vec<_>>();
-    ui.global::<App>().set_scrcpy_parameter_help(ModelRc::from(Rc::new(VecModel::from(parameters))));
-    ui.global::<App>().set_scrcpy_help_version(scrcpy_parameters::DOCUMENTATION_VERSION.into());
+    ui.global::<App>()
+        .set_scrcpy_parameter_help(ModelRc::from(Rc::new(VecModel::from(parameters))));
+    ui.global::<App>()
+        .set_scrcpy_help_version(scrcpy_parameters::DOCUMENTATION_VERSION.into());
     ui.global::<App>().on_describe_scrcpy_parameter(|argument| {
         scrcpy_parameters::describe_argument(argument.as_str()).into()
     });
@@ -100,7 +102,7 @@ fn bind_input_sync(
     });
 }
 
-fn save_extra_args(extra_args: String) {
+pub(crate) fn save_extra_args(extra_args: String) {
     let mut config = crate::app_config::load();
     if config.scrcpy_extra_args != extra_args {
         config.scrcpy_extra_args = extra_args;
@@ -153,7 +155,8 @@ fn bind_toggle(ui: &AppWindow, model: Rc<VecModel<ScrcpyTagData>>) {
         } else {
             args.push(tag.text.to_string());
         }
-        ui.global::<App>().set_scrcpy_extra_args(rebuild_extra_args(&args).into());
+        ui.global::<App>()
+            .set_scrcpy_extra_args(rebuild_extra_args(&args).into());
         ui.global::<App>().invoke_scrcpy_extra_args_changed();
     });
 }
@@ -169,9 +172,10 @@ fn bind_remove(ui: &AppWindow, model: Rc<VecModel<ScrcpyTagData>>) {
 
 /// 依据输入框当前解析出的参数刷新每个 Tag 的选中态
 fn sync_tag_selection(ui: &AppWindow, model: &VecModel<ScrcpyTagData>) {
-    let active: HashSet<String> = scrcpy::parse_extra_args(&ui.global::<App>().get_scrcpy_extra_args())
-        .into_iter()
-        .collect();
+    let active: HashSet<String> =
+        scrcpy::parse_extra_args(&ui.global::<App>().get_scrcpy_extra_args())
+            .into_iter()
+            .collect();
     for i in 0..model.row_count() {
         if let Some(tag) = model.row_data(i) {
             let selected = active.contains(tag.text.as_str());

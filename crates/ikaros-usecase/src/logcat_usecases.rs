@@ -1,6 +1,6 @@
+use ikaros_domain::{DomainError, LogEntry, LogcatRepository};
 use std::sync::Arc;
 use tokio::sync::{mpsc::Sender, watch::Receiver};
-use ikaros_domain::{DomainError, LogEntry, LogcatRepository};
 
 /// Logcat 日志处理用例
 pub struct LogcatUseCases {

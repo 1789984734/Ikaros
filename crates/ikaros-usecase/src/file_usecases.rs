@@ -1,7 +1,7 @@
+use ikaros_domain::{DomainError, RemoteFile, SyncRepository, TransferProgress};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
-use ikaros_domain::{DomainError, RemoteFile, SyncRepository, TransferProgress};
 
 /// 文件浏览与传输用例
 pub struct FileUseCases {
@@ -67,15 +67,13 @@ impl FileUseCases {
         remote_path: &str,
         new_name: &str,
     ) -> Result<(), DomainError> {
-        self.sync_repo.rename_path(serial, remote_path, new_name).await
+        self.sync_repo
+            .rename_path(serial, remote_path, new_name)
+            .await
     }
 
     /// 用例：创建远程目录（含父目录）
-    pub async fn make_directory(
-        &self,
-        serial: &str,
-        remote_path: &str,
-    ) -> Result<(), DomainError> {
+    pub async fn make_directory(&self, serial: &str, remote_path: &str) -> Result<(), DomainError> {
         self.sync_repo.make_directory(serial, remote_path).await
     }
 }

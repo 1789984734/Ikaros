@@ -1,6 +1,6 @@
+use super::{AppIntent, AppStore};
 use std::sync::Arc;
 use std::time::Duration;
-use super::{AppIntent, AppStore};
 use tracing::error;
 
 impl AppStore {
@@ -30,7 +30,9 @@ impl AppStore {
         let previous_serial = self.state.current_serial();
         self.state.devices = devices;
         self.state.is_busy = false;
-        self.state.selected_device_idx = self.state.devices
+        self.state.selected_device_idx = self
+            .state
+            .devices
             .iter()
             .position(|device| device.serial == previous_serial)
             .unwrap_or(0);
@@ -39,7 +41,9 @@ impl AppStore {
             self.state.selected_device_detail = None;
             self.state.status_message = "未检测到任何连接的 Android 设备".to_string();
         } else {
-            let serial = self.state.devices[self.state.selected_device_idx].serial.clone();
+            let serial = self.state.devices[self.state.selected_device_idx]
+                .serial
+                .clone();
             self.state.status_message = format!("已连接 {} 台设备", self.state.devices.len());
             let _ = self.intent_sender.send(AppIntent::LoadDeviceDetail(serial));
         }
@@ -60,11 +64,17 @@ impl AppStore {
                 self.state.display_logs.clear();
             }
             self.state.selected_device_idx = index;
-            if changed_device { self.reset_performance_device(); }
+            if changed_device {
+                self.reset_performance_device();
+            }
             let serial = self.state.devices[index].serial.clone();
             let _ = self.intent_sender.send(AppIntent::LoadDeviceDetail(serial));
-            let _ = self.intent_sender.send(AppIntent::BrowseDirectory("/sdcard".to_string()));
-            let _ = self.intent_sender.send(AppIntent::LoadPackages(self.state.app_filter));
+            let _ = self
+                .intent_sender
+                .send(AppIntent::BrowseDirectory("/sdcard".to_string()));
+            let _ = self
+                .intent_sender
+                .send(AppIntent::LoadPackages(self.state.app_filter));
             if was_streaming {
                 let _ = self.intent_sender.send(AppIntent::StartLogcatStream);
             }
@@ -94,7 +104,9 @@ impl AppStore {
     }
 
     pub(super) fn on_device_detail_loaded(&mut self, detail: ikaros_domain::DeviceDetail) {
-        if detail.serial != self.state.current_serial() { return; }
+        if detail.serial != self.state.current_serial() {
+            return;
+        }
         let msg = format!("已连接: {} ({})", detail.model, detail.serial);
         self.state.status_message = msg;
         self.state.is_busy = false;
@@ -106,8 +118,12 @@ impl AppStore {
 
         self.state.selected_device_detail = Some(detail);
 
-        let _ = self.intent_sender.send(AppIntent::BrowseDirectory("/sdcard".to_string()));
-        let _ = self.intent_sender.send(AppIntent::LoadPackages(self.state.app_filter));
+        let _ = self
+            .intent_sender
+            .send(AppIntent::BrowseDirectory("/sdcard".to_string()));
+        let _ = self
+            .intent_sender
+            .send(AppIntent::LoadPackages(self.state.app_filter));
     }
 
     pub(super) fn on_switch_tab(&mut self, tab: i32) {
@@ -149,7 +165,10 @@ impl AppStore {
                 Ok(text) => format!("无线连接成功: {}", text.trim()),
                 Err(e) => format!("无线连接失败: {}", e),
             };
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
             let _ = tx.send(AppIntent::RefreshDevices);
         });
     }
@@ -167,7 +186,10 @@ impl AppStore {
                 Ok(text) => format!("已断开: {}", text.trim()),
                 Err(e) => format!("断开失败: {}", e),
             };
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
             let _ = tx.send(AppIntent::RefreshDevices);
         });
     }
@@ -177,7 +199,10 @@ impl AppStore {
             self.state.status_message = "请先连接并选择一台 USB 设备".into();
             return;
         };
-        let wifi_ip = self.state.selected_device_detail.as_ref()
+        let wifi_ip = self
+            .state
+            .selected_device_detail
+            .as_ref()
             .filter(|detail| detail.serial == device.serial)
             .and_then(|detail| detail.wifi_ip.clone());
         let Some(wifi_ip) = wifi_ip else {
@@ -201,7 +226,10 @@ impl AppStore {
                         Ok(text) => format!("无线模式已开启: {}", text.trim()),
                         Err(e) => format!("已切换无线模式，但回连 {} 失败: {}（可在手机上确认无线调试端口后手动连接）", address, e),
                     };
-                    let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+                    let _ = tx.send(AppIntent::SetStatusMessage {
+                        message,
+                        is_busy: false,
+                    });
                     let _ = tx.send(AppIntent::RefreshDevices);
                 }
                 Err(e) => {
@@ -217,7 +245,9 @@ impl AppStore {
     // ========== 快捷工具 ==========
     pub(super) fn on_capture_screenshot(&mut self) {
         let serial = self.state.current_serial();
-        if serial == "未连接" { return; }
+        if serial == "未连接" {
+            return;
+        }
         let Some(path) = tool_output_path(&serial, "screenshot", "png") else {
             self.state.status_message = "无法确定保存目录".into();
             return;
@@ -236,13 +266,18 @@ impl AppStore {
                 Ok(bytes) => format!("截图已保存: {:?} ({:.1} KB)", path, bytes as f64 / 1024.0),
                 Err(e) => format!("截图失败: {}", e),
             };
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
         });
     }
 
     pub(super) fn on_capture_screen_recording(&mut self, seconds: u32) {
         let serial = self.state.current_serial();
-        if serial == "未连接" { return; }
+        if serial == "未连接" {
+            return;
+        }
         let seconds = seconds.clamp(3, 180);
         let device_path = format!("/sdcard/ikaros_record_{}.mp4", timestamp());
         let Some(local_path) = tool_output_path(&serial, "record", "mp4") else {
@@ -256,32 +291,57 @@ impl AppStore {
         let tx = self.intent_sender.clone();
         tokio::spawn(async move {
             let message = match usecases
-                .execute_shell(&serial, &format!("screenrecord --time-limit {} {}", seconds, shell_quote(&device_path)))
+                .execute_shell(
+                    &serial,
+                    &format!(
+                        "screenrecord --time-limit {} {}",
+                        seconds,
+                        shell_quote(&device_path)
+                    ),
+                )
                 .await
             {
                 Ok(_) => {
-                    std::fs::create_dir_all(local_path.parent().unwrap_or(std::path::Path::new("/tmp"))).ok();
-                    match file_usecases.pull_file(&serial, &device_path, &local_path, None).await {
+                    std::fs::create_dir_all(
+                        local_path.parent().unwrap_or(std::path::Path::new("/tmp")),
+                    )
+                    .ok();
+                    match file_usecases
+                        .pull_file(&serial, &device_path, &local_path, None)
+                        .await
+                    {
                         Ok(()) => format!("录屏已保存: {:?}", local_path),
-                        Err(e) => format!("录制完成，但拉取视频失败: {}（设备端路径 {}）", e, device_path),
+                        Err(e) => format!(
+                            "录制完成，但拉取视频失败: {}（设备端路径 {}）",
+                            e, device_path
+                        ),
                     }
                 }
                 Err(e) => format!("录屏失败: {}", e),
             };
-            let _ = usecases.execute_shell(&serial, &format!("rm -f {}", shell_quote(&device_path))).await.ok();
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = usecases
+                .execute_shell(&serial, &format!("rm -f {}", shell_quote(&device_path)))
+                .await
+                .ok();
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
         });
     }
 
     pub(super) fn on_capture_bugreport(&mut self) {
         let serial = self.state.current_serial();
-        if serial == "未连接" { return; }
+        if serial == "未连接" {
+            return;
+        }
         let Some(path) = tool_output_path(&serial, "bugreport", "zip") else {
             self.state.status_message = "无法确定保存目录".into();
             return;
         };
         self.state.is_busy = true;
-        self.state.status_message = "正在生成 Bug 报告，通常需要 1~2 分钟，请保持设备连接...".into();
+        self.state.status_message =
+            "正在生成 Bug 报告，通常需要 1~2 分钟，请保持设备连接...".into();
         let usecases = Arc::clone(&self.device_usecases);
         let tx = self.intent_sender.clone();
         tokio::spawn(async move {
@@ -290,11 +350,20 @@ impl AppStore {
                 .exec_to_file(&serial, "bugreportz -s", &path, stop_rx)
                 .await
             {
-                Ok(bytes) if bytes > 0 => format!("Bug 报告已保存: {:?} ({:.1} MB)", path, bytes as f64 / 1048576.0),
-                Ok(_) => "Bug 报告生成失败: 设备未返回数据（可能系统不支持 bugreportz -s）".to_string(),
+                Ok(bytes) if bytes > 0 => format!(
+                    "Bug 报告已保存: {:?} ({:.1} MB)",
+                    path,
+                    bytes as f64 / 1048576.0
+                ),
+                Ok(_) => {
+                    "Bug 报告生成失败: 设备未返回数据（可能系统不支持 bugreportz -s）".to_string()
+                }
                 Err(e) => format!("Bug 报告生成失败: {}", e),
             };
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
         });
     }
 }
@@ -307,9 +376,21 @@ pub(super) fn tool_output_path(serial: &str, kind: &str, ext: &str) -> Option<st
     std::fs::create_dir_all(&path).ok()?;
     let safe_serial: String = serial
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '.' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
-    path.push(format!("ikaros-{}-{}-{}.{}", kind, safe_serial, timestamp(), ext));
+    path.push(format!(
+        "ikaros-{}-{}-{}.{}",
+        kind,
+        safe_serial,
+        timestamp(),
+        ext
+    ));
     Some(path)
 }
 

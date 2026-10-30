@@ -1,9 +1,11 @@
+use crate::AdbClient;
+use async_trait::async_trait;
+use ikaros_domain::{
+    AppFilterType, AppInfo, DeviceRepository, DomainError, PackageRepository, SyncRepository,
+};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
-use async_trait::async_trait;
-use ikaros_domain::{AppFilterType, AppInfo, DeviceRepository, DomainError, PackageRepository, SyncRepository};
-use crate::AdbClient;
 
 pub(crate) fn valid_package_name(package: &str) -> bool {
     !package.is_empty()
@@ -61,8 +63,8 @@ impl PackageRepository for AdbClient {
             // 典型输出格式: package:/data/app/~~.../base.apk=com.tencent.mm
             if let Some(content) = line.strip_prefix("package:") {
                 if let Some((apk_path, package_name)) = content.rsplit_once('=') {
-                    let is_system = filter == AppFilterType::System
-                        || system_packages.contains(package_name);
+                    let is_system =
+                        filter == AppFilterType::System || system_packages.contains(package_name);
                     let (version_name, version_code) = versions
                         .get(package_name)
                         .cloned()
@@ -124,14 +126,17 @@ impl PackageRepository for AdbClient {
         );
 
         // 1. 利用 ADB Sync 极速推送 APK 到手机临时目录
-        self.push_file(serial, local_apk_path, &remote_tmp, None).await?;
+        self.push_file(serial, local_apk_path, &remote_tmp, None)
+            .await?;
 
         // 2. 执行安装命令 (覆盖安装 -r，并支持测试包 -t)
         let install_cmd = format!("pm install -r -t \"{}\"", remote_tmp);
         let output = self.execute_shell(serial, &install_cmd).await?;
 
         // 3. 清理临时 APK
-        let _ = self.execute_shell(serial, &format!("rm -f \"{}\"", remote_tmp)).await;
+        let _ = self
+            .execute_shell(serial, &format!("rm -f \"{}\"", remote_tmp))
+            .await;
 
         if output.contains("Success") {
             Ok(())
@@ -159,12 +164,10 @@ impl PackageRepository for AdbClient {
             String::new()
         };
         let cmd = format!("pm uninstall{user_option} {package_name}");
-        let output = tokio::time::timeout(
-            Duration::from_secs(60),
-            self.execute_shell(serial, &cmd),
-        )
-        .await
-        .map_err(|_| DomainError::ShellExecutionFailed("应用卸载请求超时".into()))??;
+        let output =
+            tokio::time::timeout(Duration::from_secs(60), self.execute_shell(serial, &cmd))
+                .await
+                .map_err(|_| DomainError::ShellExecutionFailed("应用卸载请求超时".into()))??;
 
         if output.trim() == "Success" {
             Ok(())
@@ -177,7 +180,11 @@ impl PackageRepository for AdbClient {
     }
 
     /// 清除应用数据 (pm clear)
-    async fn clear_package_data(&self, serial: &str, package_name: &str) -> Result<(), DomainError> {
+    async fn clear_package_data(
+        &self,
+        serial: &str,
+        package_name: &str,
+    ) -> Result<(), DomainError> {
         let cmd = format!("pm clear {}", package_name);
         let output = self.execute_shell(serial, &cmd).await?;
 
@@ -212,8 +219,9 @@ impl AdbClient {
         )
         .await
         .map_err(|_| DomainError::ShellExecutionFailed("读取设备当前用户超时".into()))??;
-        output.trim().parse::<u32>()
-            .map_err(|_| DomainError::ParseError(format!("无法读取设备当前用户: {}", output.trim())))
+        output.trim().parse::<u32>().map_err(|_| {
+            DomainError::ParseError(format!("无法读取设备当前用户: {}", output.trim()))
+        })
     }
 
     /// 解析 dumpsys package 全量输出，构建 包名 -> (versionName, versionCode) 映射

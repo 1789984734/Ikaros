@@ -1,35 +1,35 @@
+use crate::mvi::intent::AppIntent;
+use crate::mvi::log_recording::LogRecorder;
+use crate::mvi::state::AppViewState;
+use ikaros_domain::LogEntry;
+use ikaros_usecase::PerformanceUseCases;
+use ikaros_usecase::{AppUseCases, DeviceUseCases, FileUseCases, LogcatUseCases};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::watch;
-use ikaros_domain::LogEntry;
-use ikaros_usecase::{AppUseCases, DeviceUseCases, FileUseCases, LogcatUseCases};
-use ikaros_usecase::PerformanceUseCases;
-use crate::mvi::intent::AppIntent;
-use crate::mvi::state::AppViewState;
-use crate::mvi::log_recording::LogRecorder;
 
 const LOG_HISTORY_LIMIT: usize = 50_000;
 const DISPLAY_LOG_LIMIT: usize = 300;
 
-#[path = "performance.rs"]
-mod performance;
-#[path = "mirroring.rs"]
-mod mirroring;
+#[cfg(test)]
+#[path = "app_uninstall_tests.rs"]
+mod app_uninstall_tests;
 #[path = "device_store.rs"]
 mod device_store;
 #[path = "file_store.rs"]
 mod file_store;
-#[path = "package_store.rs"]
-mod package_store;
-#[path = "terminal_store.rs"]
-mod terminal_store;
 #[path = "logcat_store.rs"]
 mod logcat_store;
-#[cfg(test)]
-#[path = "app_uninstall_tests.rs"]
-mod app_uninstall_tests;
+#[path = "mirroring.rs"]
+mod mirroring;
+#[path = "package_store.rs"]
+mod package_store;
+#[path = "performance.rs"]
+mod performance;
+#[path = "terminal_store.rs"]
+mod terminal_store;
 
 /// MVI 的核心调度器与状态机
 /// 领域处理逻辑拆分在 device/file/package/terminal/logcat/performance 模块中。
@@ -102,7 +102,9 @@ impl AppStore {
         match intent {
             // 性能监控
             AppIntent::TogglePerformance => self.toggle_performance(),
-            AppIntent::SelectPerformancePackage(package) => self.select_performance_package(package),
+            AppIntent::SelectPerformancePackage(package) => {
+                self.select_performance_package(package)
+            }
             AppIntent::PerformancePackagesLoaded { serial, result } => {
                 self.receive_performance_packages(serial, result);
             }
@@ -125,7 +127,9 @@ impl AppStore {
             AppIntent::WirelessDisconnect(address) => self.on_wireless_disconnect(address),
             AppIntent::EnableWirelessMode => self.on_enable_wireless_mode(),
             AppIntent::CaptureScreenshot => self.on_capture_screenshot(),
-            AppIntent::CaptureScreenRecording { seconds } => self.on_capture_screen_recording(seconds),
+            AppIntent::CaptureScreenRecording { seconds } => {
+                self.on_capture_screen_recording(seconds)
+            }
             AppIntent::CaptureBugreport => self.on_capture_bugreport(),
 
             // 终端
@@ -154,15 +158,24 @@ impl AppStore {
 
             // 文件管理
             AppIntent::BrowseDirectory(path) => self.on_browse_directory(path),
-            AppIntent::DirectoryLoaded { current_path, files } => {
+            AppIntent::DirectoryLoaded {
+                current_path,
+                files,
+            } => {
                 self.on_directory_loaded(current_path, files);
             }
             AppIntent::EnterDirectory(dir_name) => self.on_enter_directory(dir_name),
             AppIntent::NavigateUpDirectory => self.on_navigate_up_directory(),
-            AppIntent::PullRemoteFile { remote_path, local_target } => {
+            AppIntent::PullRemoteFile {
+                remote_path,
+                local_target,
+            } => {
                 self.on_pull_remote_file(remote_path, local_target);
             }
-            AppIntent::PushLocalFile { local_path, remote_target } => {
+            AppIntent::PushLocalFile {
+                local_path,
+                remote_target,
+            } => {
                 self.on_push_local_file(local_path, remote_target);
             }
             AppIntent::TransferProgressUpdated(prog) => self.on_transfer_progress_updated(prog),
@@ -174,13 +187,21 @@ impl AppStore {
                 self.on_rename_remote_file(old_path, new_name);
             }
             AppIntent::CreateRemoteDirectory(name) => self.on_create_remote_directory(name),
-            AppIntent::FileOpCompleted { action, result, refresh_dir } => {
+            AppIntent::FileOpCompleted {
+                action,
+                result,
+                refresh_dir,
+            } => {
                 self.on_file_op_completed(action, result, refresh_dir);
             }
 
             // 应用包管理
             AppIntent::LoadPackages(filter) => self.on_load_packages(filter),
-            AppIntent::PackagesLoaded { serial, filter, result } => {
+            AppIntent::PackagesLoaded {
+                serial,
+                filter,
+                result,
+            } => {
                 self.on_packages_loaded(serial, filter, result);
             }
             AppIntent::SetAppSearchQuery(query) => self.on_set_app_search_query(query),
@@ -188,10 +209,17 @@ impl AppStore {
             AppIntent::StopApp(pkg) => self.on_stop_app(pkg),
             AppIntent::ClearAppData(pkg) => self.on_clear_app_data(pkg),
             AppIntent::UninstallApp(pkg) => self.on_uninstall_app(pkg),
-            AppIntent::AppUninstalled { serial, package_name, result } => {
+            AppIntent::AppUninstalled {
+                serial,
+                package_name,
+                result,
+            } => {
                 self.on_app_uninstalled(serial, package_name, result);
             }
-            AppIntent::ExtractApk { remote_apk_path, package_name } => {
+            AppIntent::ExtractApk {
+                remote_apk_path,
+                package_name,
+            } => {
                 self.on_extract_apk(remote_apk_path, package_name);
             }
             AppIntent::InstallApk(apk_path) => self.on_install_apk(apk_path),
@@ -204,7 +232,10 @@ impl AppStore {
                 self.on_log_recording_updated(enabled, error);
             }
             AppIntent::OpenLogRecordingDirectory => self.on_open_log_recording_directory(),
-            AppIntent::LogEntriesReceived { generation, entries } => {
+            AppIntent::LogEntriesReceived {
+                generation,
+                entries,
+            } => {
                 self.on_log_entries_received(generation, entries);
             }
             AppIntent::LogcatStreamEnded { generation, error } => {
@@ -214,7 +245,11 @@ impl AppStore {
             AppIntent::SetLogSearchQuery(query) => self.on_set_log_search_query(query),
             AppIntent::AddLogFilter { field, value } => self.on_add_log_filter(field, value),
             AppIntent::ClearLogs => self.on_clear_logs(),
-            AppIntent::LogcatCleared { generation, resume, error } => {
+            AppIntent::LogcatCleared {
+                generation,
+                resume,
+                error,
+            } => {
                 self.on_logcat_cleared(generation, resume, error);
             }
             AppIntent::ExportFilteredLogs => self.on_export_filtered_logs(),
@@ -242,10 +277,18 @@ mod tests {
 
     fn log_entry(number: usize) -> LogEntry {
         LogEntry {
-            timestamp: String::new(), pid: 1, tid: 1,
-            package_name: None, process_name: None,
-            level: if number == 16_000 { ikaros_domain::LogLevel::Error } else { ikaros_domain::LogLevel::Info },
-            tag: "Needle".into(), message: number.to_string(),
+            timestamp: String::new(),
+            pid: 1,
+            tid: 1,
+            package_name: None,
+            process_name: None,
+            level: if number == 16_000 {
+                ikaros_domain::LogLevel::Error
+            } else {
+                ikaros_domain::LogLevel::Info
+            },
+            tag: "Needle".into(),
+            message: number.to_string(),
         }
     }
 
@@ -260,16 +303,35 @@ mod tests {
         second.package_name = Some("com.example.second".into());
         let mut success = first.clone();
         success.message = "network success".into();
-        store.dispatch(AppIntent::LogEntriesReceived {
-            generation: 0, entries: vec![first, second, success],
-        }).await;
-        store.dispatch(AppIntent::SetLogSearchQuery("package:com.example.first timeout".into())).await;
+        store
+            .dispatch(AppIntent::LogEntriesReceived {
+                generation: 0,
+                entries: vec![first, second, success],
+            })
+            .await;
+        store
+            .dispatch(AppIntent::SetLogSearchQuery(
+                "package:com.example.first timeout".into(),
+            ))
+            .await;
         assert_eq!(store.state.display_logs.len(), 1);
-        assert_eq!(store.state.display_logs[0].package_name.as_deref(), Some("com.example.first"));
-        store.dispatch(AppIntent::SetLogSearchQuery("package:com.example.second message:timeout".into())).await;
+        assert_eq!(
+            store.state.display_logs[0].package_name.as_deref(),
+            Some("com.example.first")
+        );
+        store
+            .dispatch(AppIntent::SetLogSearchQuery(
+                "package:com.example.second message:timeout".into(),
+            ))
+            .await;
         assert_eq!(store.state.display_logs.len(), 1);
-        assert_eq!(store.state.display_logs[0].package_name.as_deref(), Some("com.example.second"));
-        store.dispatch(AppIntent::SetLogSearchQuery(String::new())).await;
+        assert_eq!(
+            store.state.display_logs[0].package_name.as_deref(),
+            Some("com.example.second")
+        );
+        store
+            .dispatch(AppIntent::SetLogSearchQuery(String::new()))
+            .await;
         assert_eq!(store.state.display_logs.len(), 3);
         assert_eq!(store.logs_ring_buffer.len(), 3);
     }
@@ -286,18 +348,33 @@ mod tests {
         second.tag = "Other".into();
         let mut third = first.clone();
         third.package_name = Some("com.example.third".into());
-        store.dispatch(AppIntent::LogEntriesReceived {
-            generation: 0, entries: vec![first, second, third],
-        }).await;
-        store.dispatch(AppIntent::SetLogSearchQuery("timeout".into())).await;
+        store
+            .dispatch(AppIntent::LogEntriesReceived {
+                generation: 0,
+                entries: vec![first, second, third],
+            })
+            .await;
+        store
+            .dispatch(AppIntent::SetLogSearchQuery("timeout".into()))
+            .await;
         for (field, value) in [("package", "com.example.first"), ("tag", "Network Worker")] {
-            store.dispatch(AppIntent::AddLogFilter { field: field.into(), value: value.into() }).await;
+            store
+                .dispatch(AppIntent::AddLogFilter {
+                    field: field.into(),
+                    value: value.into(),
+                })
+                .await;
         }
         assert!(store.state.log_search_query.starts_with("timeout "));
         assert_eq!(store.state.display_logs.len(), 1);
         assert_eq!(store.state.display_logs[0].tag, "Network Worker");
         let query = store.state.log_search_query.clone();
-        store.dispatch(AppIntent::AddLogFilter { field: "tag".into(), value: "Network Worker".into() }).await;
+        store
+            .dispatch(AppIntent::AddLogFilter {
+                field: "tag".into(),
+                value: "Network Worker".into(),
+            })
+            .await;
         assert_eq!(store.state.log_search_query, query);
         assert_eq!(store.logs_ring_buffer.len(), 3);
     }
@@ -314,11 +391,21 @@ mod tests {
             ("E", ikaros_domain::LogLevel::Error),
             ("F", ikaros_domain::LogLevel::Error),
         ] {
-            store.dispatch(AppIntent::AddLogFilter { field: "level".into(), value: value.into() }).await;
+            store
+                .dispatch(AppIntent::AddLogFilter {
+                    field: "level".into(),
+                    value: value.into(),
+                })
+                .await;
             assert_eq!(store.state.log_level_filter, Some(expected));
             assert_eq!(store.state.log_search_query, "package:com.example timeout");
         }
-        store.dispatch(AppIntent::AddLogFilter { field: "timestamp".into(), value: "now".into() }).await;
+        store
+            .dispatch(AppIntent::AddLogFilter {
+                field: "timestamp".into(),
+                value: "now".into(),
+            })
+            .await;
         assert_eq!(store.state.log_search_query, "package:com.example timeout");
     }
 
@@ -328,15 +415,26 @@ mod tests {
         store.state.is_logcat_streaming = true;
         for start in (0..60_000).step_by(4096) {
             let entries = (start..(start + 4096).min(60_000)).map(log_entry).collect();
-            store.dispatch(AppIntent::LogEntriesReceived { generation: 0, entries }).await;
+            store
+                .dispatch(AppIntent::LogEntriesReceived {
+                    generation: 0,
+                    entries,
+                })
+                .await;
         }
         assert_eq!(store.logs_ring_buffer.len(), LOG_HISTORY_LIMIT);
         assert_eq!(store.logs_ring_buffer.front().unwrap().message, "10000");
         assert_eq!(store.state.display_logs.len(), DISPLAY_LOG_LIMIT);
         assert_eq!(store.state.display_logs.first().unwrap().message, "59700");
         assert_eq!(store.state.display_logs.last().unwrap().message, "59999");
-        store.dispatch(AppIntent::SetLogLevelFilter(Some(ikaros_domain::LogLevel::Error))).await;
-        store.dispatch(AppIntent::SetLogSearchQuery("nEeDlE".into())).await;
+        store
+            .dispatch(AppIntent::SetLogLevelFilter(Some(
+                ikaros_domain::LogLevel::Error,
+            )))
+            .await;
+        store
+            .dispatch(AppIntent::SetLogSearchQuery("nEeDlE".into()))
+            .await;
         assert_eq!(store.state.display_logs.len(), 1);
         assert_eq!(store.state.display_logs[0].message, "16000");
     }
@@ -346,18 +444,44 @@ mod tests {
         let mut store = log_store();
         store.state.is_logcat_streaming = true;
         store.dispatch(AppIntent::StopLogcatStream).await;
-        store.dispatch(AppIntent::LogEntriesReceived { generation: 0, entries: vec![log_entry(0)] }).await;
+        store
+            .dispatch(AppIntent::LogEntriesReceived {
+                generation: 0,
+                entries: vec![log_entry(0)],
+            })
+            .await;
         assert!(store.logs_ring_buffer.is_empty());
 
         store.state.is_logcat_streaming = true;
         let status = store.state.status_message.clone();
-        store.dispatch(AppIntent::LogcatStreamEnded { generation: 0, error: Some("old device".into()) }).await;
-        store.dispatch(AppIntent::LogcatCleared { generation: 0, resume: true, error: None }).await;
+        store
+            .dispatch(AppIntent::LogcatStreamEnded {
+                generation: 0,
+                error: Some("old device".into()),
+            })
+            .await;
+        store
+            .dispatch(AppIntent::LogcatCleared {
+                generation: 0,
+                resume: true,
+                error: None,
+            })
+            .await;
         assert!(store.state.is_logcat_streaming);
         assert_eq!(store.state.status_message, status);
-        store.dispatch(AppIntent::LogEntriesReceived { generation: 1, entries: vec![log_entry(1)] }).await;
+        store
+            .dispatch(AppIntent::LogEntriesReceived {
+                generation: 1,
+                entries: vec![log_entry(1)],
+            })
+            .await;
         assert_eq!(store.state.display_logs[0].message, "1");
-        store.dispatch(AppIntent::LogcatStreamEnded { generation: 1, error: None }).await;
+        store
+            .dispatch(AppIntent::LogcatStreamEnded {
+                generation: 1,
+                error: None,
+            })
+            .await;
         assert!(!store.state.is_logcat_streaming);
     }
 
@@ -365,9 +489,12 @@ mod tests {
     async fn recording_failure_pauses_capture_and_keeps_cleanup_available() {
         let mut store = log_store();
         store.state.is_logcat_streaming = true;
-        store.dispatch(AppIntent::LogRecordingUpdated {
-            enabled: true, error: Some("disk full".into()),
-        }).await;
+        store
+            .dispatch(AppIntent::LogRecordingUpdated {
+                enabled: true,
+                error: Some("disk full".into()),
+            })
+            .await;
         assert!(!store.state.is_logcat_streaming);
         assert!(store.state.is_log_recording_enabled);
         assert!(store.state.log_recording_has_error);
@@ -395,9 +522,14 @@ mod tests {
         );
 
         // Consume the independent recorder's initial state before checking the install result.
-        assert!(matches!(rx.recv().await, Some(AppIntent::LogRecordingUpdated { .. })));
+        assert!(matches!(
+            rx.recv().await,
+            Some(AppIntent::LogRecordingUpdated { .. })
+        ));
         // 设备未连接时发送 InstallApk
-        store.dispatch(AppIntent::InstallApk(PathBuf::from("/tmp/test.apk"))).await;
+        store
+            .dispatch(AppIntent::InstallApk(PathBuf::from("/tmp/test.apk")))
+            .await;
 
         // 验证已接收到未连接的友好提示
         if let Some(AppIntent::SetStatusMessage { message, is_busy }) = rx.recv().await {

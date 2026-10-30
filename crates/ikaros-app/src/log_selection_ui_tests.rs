@@ -440,19 +440,38 @@ fn check_live_view_buffering(window: &MinimalSoftwareWindow) {
     window.set_size(slint::PhysicalSize::new(1120, 740));
     render(window);
     ui.global::<App>().set_follow_latest_logs(false);
-    ui.global::<App>().invoke_select_log(10, false, false, false);
-    let frozen = ui.global::<App>().get_log_items().iter().collect::<Vec<_>>();
+    ui.global::<App>()
+        .invoke_select_log(10, false, false, false);
+    let frozen = ui
+        .global::<App>()
+        .get_log_items()
+        .iter()
+        .collect::<Vec<_>>();
     for batch in 1..=20 {
-        ui.global::<App>().invoke_update_log_entries(app_rows(batch * 200));
+        ui.global::<App>()
+            .invoke_update_log_entries(app_rows(batch * 200));
     }
     render(window);
-    assert_eq!(ui.global::<App>().get_log_items().iter().collect::<Vec<_>>(), frozen);
+    assert_eq!(
+        ui.global::<App>()
+            .get_log_items()
+            .iter()
+            .collect::<Vec<_>>(),
+        frozen
+    );
     assert!(ui.global::<App>().get_log_updates_pending());
     assert_eq!(ui.global::<App>().get_log_selection_count(), 1);
     ui.global::<App>().set_follow_latest_logs(true);
     render(window);
     assert_eq!(ui.global::<App>().get_log_items().row_count(), 300);
-    assert_eq!(ui.global::<App>().get_log_items().row_data(0).unwrap().message, "log 4000");
+    assert_eq!(
+        ui.global::<App>()
+            .get_log_items()
+            .row_data(0)
+            .unwrap()
+            .message,
+        "log 4000"
+    );
     assert!(!ui.global::<App>().get_log_updates_pending());
     check_filter_and_clear_while_reading(&ui, window);
     ui.hide().unwrap();
@@ -465,10 +484,18 @@ fn check_filter_and_clear_while_reading(ui: &AppWindow, window: &MinimalSoftware
     ui.global::<App>().invoke_update_log_entries(app_rows(6000));
     render(window);
     assert!(ui.global::<App>().get_follow_latest_logs());
-    assert_eq!(ui.global::<App>().get_log_items().row_data(0).unwrap().message, "log 6000");
+    assert_eq!(
+        ui.global::<App>()
+            .get_log_items()
+            .row_data(0)
+            .unwrap()
+            .message,
+        "log 6000"
+    );
     ui.global::<App>().set_follow_latest_logs(false);
     ui.global::<App>().invoke_update_log_entries(app_rows(7000));
-    ui.global::<App>().invoke_update_log_entries(ModelRc::default());
+    ui.global::<App>()
+        .invoke_update_log_entries(ModelRc::default());
     render(window);
     assert_eq!(ui.global::<App>().get_log_items().row_count(), 0);
     assert_eq!(ui.global::<App>().get_log_selection_count(), 0);

@@ -4,8 +4,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use ikaros_domain::{AppFilterType, AppInfo, DeviceRepository, DomainError, SyncRepository};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use ikaros_domain::{AppFilterType, AppInfo, DeviceRepository, DomainError, SyncRepository};
 use serde::Deserialize;
 
 use crate::AdbClient;

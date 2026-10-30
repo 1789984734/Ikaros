@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use super::{AppIntent, AppStore};
+use std::sync::Arc;
 
 impl AppStore {
     /// 流式执行终端命令：输出实时回传，可随时中断（断开即杀死远端进程）
@@ -10,7 +10,9 @@ impl AppStore {
         }
         let serial = self.state.current_serial();
         if serial == "未连接" {
-            self.state.shell_output.push_str("错误: 当前没有可用的连接设备\n");
+            self.state
+                .shell_output
+                .push_str("错误: 当前没有可用的连接设备\n");
             return;
         }
         if self.state.is_shell_busy {
@@ -34,7 +36,9 @@ impl AppStore {
             let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::unbounded_channel();
             let tx_chunk = tx.clone();
             let stream_task = tokio::spawn(async move {
-                usecases.stream_shell(&serial, &cmd, chunk_tx, stop_rx).await
+                usecases
+                    .stream_shell(&serial, &cmd, chunk_tx, stop_rx)
+                    .await
             });
             while let Some(chunk) = chunk_rx.recv().await {
                 let _ = tx_chunk.send(AppIntent::ShellOutputReceived(chunk));
@@ -68,7 +72,9 @@ impl AppStore {
         self.state.shell_output.push('\n');
         match error {
             Some(error) => {
-                self.state.shell_output.push_str(&format!("执行失败: {error}\n"));
+                self.state
+                    .shell_output
+                    .push_str(&format!("执行失败: {error}\n"));
                 self.state.status_message = "命令执行失败".to_string();
             }
             None => self.state.status_message = "命令执行完成".to_string(),

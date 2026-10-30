@@ -205,7 +205,11 @@ impl RecordingWorker {
                 entry.pid,
                 entry.tid,
                 entry.level.as_str(),
-                entry.package_name.as_deref().or(entry.process_name.as_deref()).unwrap_or("—"),
+                entry
+                    .package_name
+                    .as_deref()
+                    .or(entry.process_name.as_deref())
+                    .unwrap_or("—"),
                 entry.tag,
                 entry.message
             );

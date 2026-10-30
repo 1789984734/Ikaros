@@ -26,7 +26,9 @@ pub fn load_tags() -> Vec<String> {
 
 /// 增删 Tag 后整体覆盖保存, 失败仅记录告警不阻塞界面
 pub fn save_tags(tags: &[String]) {
-    let Some(path) = config_file_path() else { return };
+    let Some(path) = config_file_path() else {
+        return;
+    };
     if let Err(error) = write_tags(&path, tags) {
         tracing::warn!(%error, "保存自定义参数 Tag 失败");
     }

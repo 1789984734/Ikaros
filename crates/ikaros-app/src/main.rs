@@ -1,32 +1,32 @@
+use slint::{Color, ModelRc, VecModel};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-use slint::{Color, ModelRc, VecModel};
 
 use ikaros_adb::AdbClient;
 use ikaros_domain::{AppFilterType, LogLevel};
 use ikaros_usecase::{AppUseCases, DeviceUseCases, FileUseCases, LogcatUseCases};
 
-mod mvi;
 mod app_config;
-mod ui_bindings;
-mod scrcpy;
-mod scrcpy_parameters;
-mod scrcpy_tags;
-mod scrcpy_ui;
-mod performance_ui;
+#[cfg(test)]
+mod device_ui_tests;
 mod file_ui;
 mod log_filter;
 mod log_search_ui;
 mod log_selection_ui;
-#[cfg(test)]
-mod device_ui_tests;
 #[cfg(target_os = "macos")]
 mod macos_menu;
 #[cfg(target_os = "macos")]
 mod macos_window;
+mod mvi;
+mod performance_ui;
+mod scrcpy;
+mod scrcpy_parameters;
+mod scrcpy_tags;
+mod scrcpy_ui;
+mod ui_bindings;
 use mvi::{AppIntent, AppStore, AppViewState};
 
 slint::include_modules!();
@@ -159,7 +159,8 @@ fn start_state_loop(
     mut intents: mpsc::UnboundedReceiver<AppIntent>,
     ui: slint::Weak<AppWindow>,
 ) -> slint::Timer {
-    let (snapshots, mut latest) = watch::channel((0_u64, 0_u64, 0_u64, 0_u64, 0_u64, store.state.clone()));
+    let (snapshots, mut latest) =
+        watch::channel((0_u64, 0_u64, 0_u64, 0_u64, 0_u64, store.state.clone()));
     tokio::spawn(async move {
         let mut revision = 0_u64;
         let mut log_revision = 0_u64;
@@ -199,52 +200,68 @@ fn start_state_loop(
     let mut applied_performance_revision = None;
     let mut applied_shell_revision = None;
     let mut applied_transfer_revision = None;
-    timer.start(slint::TimerMode::Repeated, Duration::from_millis(100), move || {
-        if !latest.has_changed().unwrap_or(false) {
-            return;
-        }
-        let snapshot = latest.borrow_and_update();
-        let (main_rev, log_rev, perf_rev, shell_rev, transfer_rev, state) = &*snapshot;
-        let Some(ui) = ui.upgrade() else { return };
-        if applied_revision != Some(*main_rev) {
-            apply_state_to_ui(&ui, state);
-            applied_revision = Some(*main_rev);
-            applied_log_revision = Some(*log_rev);
-            applied_performance_revision = Some(*perf_rev);
-            applied_shell_revision = Some(*shell_rev);
-            applied_transfer_revision = Some(*transfer_rev);
-        } else if state.active_tab == 4 && applied_log_revision != Some(*log_rev) {
-            apply_logcat_to_ui(&ui, state);
-            applied_log_revision = Some(*log_rev);
-        } else if state.active_tab == 6 && applied_performance_revision != Some(*perf_rev) {
-            performance_ui::apply(&ui, state);
-            applied_performance_revision = Some(*perf_rev);
-        } else if state.active_tab == 5 && applied_shell_revision != Some(*shell_rev) {
-            // 终端高频输出走独立通道，只刷新输出文本，避免整页重建
-            ui.global::<App>().set_shell_output(state.shell_output.clone().into());
-            ui.global::<App>().set_is_shell_busy(state.is_shell_busy);
-            applied_shell_revision = Some(*shell_rev);
-        } else if applied_transfer_revision != Some(*transfer_rev) {
-            // 传输进度走独立通道，只刷两个属性，避免高频整页重建
-            ui.global::<App>().set_file_transfer_percent(state.file_transfer_percent);
-            ui.global::<App>().set_file_status_text(state.file_transfer_message.clone().into());
-            applied_transfer_revision = Some(*transfer_rev);
-        }
-    });
+    timer.start(
+        slint::TimerMode::Repeated,
+        Duration::from_millis(100),
+        move || {
+            if !latest.has_changed().unwrap_or(false) {
+                return;
+            }
+            let snapshot = latest.borrow_and_update();
+            let (main_rev, log_rev, perf_rev, shell_rev, transfer_rev, state) = &*snapshot;
+            let Some(ui) = ui.upgrade() else { return };
+            if applied_revision != Some(*main_rev) {
+                apply_state_to_ui(&ui, state);
+                applied_revision = Some(*main_rev);
+                applied_log_revision = Some(*log_rev);
+                applied_performance_revision = Some(*perf_rev);
+                applied_shell_revision = Some(*shell_rev);
+                applied_transfer_revision = Some(*transfer_rev);
+            } else if state.active_tab == 4 && applied_log_revision != Some(*log_rev) {
+                apply_logcat_to_ui(&ui, state);
+                applied_log_revision = Some(*log_rev);
+            } else if state.active_tab == 6 && applied_performance_revision != Some(*perf_rev) {
+                performance_ui::apply(&ui, state);
+                applied_performance_revision = Some(*perf_rev);
+            } else if state.active_tab == 5 && applied_shell_revision != Some(*shell_rev) {
+                // 终端高频输出走独立通道，只刷新输出文本，避免整页重建
+                ui.global::<App>()
+                    .set_shell_output(state.shell_output.clone().into());
+                ui.global::<App>().set_is_shell_busy(state.is_shell_busy);
+                applied_shell_revision = Some(*shell_rev);
+            } else if applied_transfer_revision != Some(*transfer_rev) {
+                // 传输进度走独立通道，只刷两个属性，避免高频整页重建
+                ui.global::<App>()
+                    .set_file_transfer_percent(state.file_transfer_percent);
+                ui.global::<App>()
+                    .set_file_status_text(state.file_transfer_message.clone().into());
+                applied_transfer_revision = Some(*transfer_rev);
+            }
+        },
+    );
     timer
 }
 
 fn apply_logcat_to_ui(ui: &AppWindow, state: &AppViewState) {
-    ui.global::<App>().set_is_logcat_active(state.is_logcat_streaming);
-    ui.global::<App>().set_is_log_recording_enabled(state.is_log_recording_enabled);
-    ui.global::<App>().set_is_log_recording_busy(state.is_log_recording_busy);
-    ui.global::<App>().set_log_recording_message(state.log_recording_message.clone().into());
-    ui.global::<App>().set_log_recording_has_error(state.log_recording_has_error);
-    ui.global::<App>().set_log_recording_directory(state.log_recording_directory.clone().into());
-    ui.global::<App>().set_log_search_query(state.log_search_query.clone().into());
+    ui.global::<App>()
+        .set_is_logcat_active(state.is_logcat_streaming);
+    ui.global::<App>()
+        .set_is_log_recording_enabled(state.is_log_recording_enabled);
+    ui.global::<App>()
+        .set_is_log_recording_busy(state.is_log_recording_busy);
+    ui.global::<App>()
+        .set_log_recording_message(state.log_recording_message.clone().into());
+    ui.global::<App>()
+        .set_log_recording_has_error(state.log_recording_has_error);
+    ui.global::<App>()
+        .set_log_recording_directory(state.log_recording_directory.clone().into());
+    ui.global::<App>()
+        .set_log_search_query(state.log_search_query.clone().into());
     let query = mvi::log_query::LogQuery::parse(&state.log_search_query);
-    ui.global::<App>().set_log_show_package(!query.has_positive_filter(log_filter::Field::Package));
-    ui.global::<App>().set_log_show_tag(!query.has_positive_filter(log_filter::Field::Tag));
+    ui.global::<App>()
+        .set_log_show_package(!query.has_positive_filter(log_filter::Field::Package));
+    ui.global::<App>()
+        .set_log_show_tag(!query.has_positive_filter(log_filter::Field::Tag));
     let level = match state.log_level_filter {
         None => 0,
         Some(LogLevel::Verbose) => 1,
@@ -254,27 +271,39 @@ fn apply_logcat_to_ui(ui: &AppWindow, state: &AppViewState) {
         Some(LogLevel::Error) | Some(LogLevel::Fatal) => 5,
     };
     ui.global::<App>().set_log_level_selected(level);
-    let items: Vec<LogItemData> = state.display_logs.iter().map(|log| {
-        let color = match log.level {
-            LogLevel::Fatal | LogLevel::Error => Color::from_rgb_u8(255, 85, 85),
-            LogLevel::Warn => Color::from_rgb_u8(255, 184, 108),
-            LogLevel::Info => Color::from_rgb_u8(80, 250, 123),
-            LogLevel::Debug => Color::from_rgb_u8(248, 248, 242),
-            LogLevel::Verbose => Color::from_rgb_u8(98, 114, 164),
-        };
-        LogItemData {
-            timestamp: log.timestamp.clone().into(),
-            level: log.level.as_str().into(),
-            tag: log.tag.clone().into(),
-            package_name: log.package_name.clone()
-                .unwrap_or_else(|| log.process_name.as_ref().map(|name| format!("— ({name})")).unwrap_or_else(|| "—".into()))
-                .into(),
-            package_filter: log.package_name.clone().unwrap_or_default().into(),
-            message: log.message.clone().into(),
-            level_color: color,
-        }
-    }).collect();
-    ui.global::<App>().invoke_update_log_entries(ModelRc::from(std::rc::Rc::new(VecModel::from(items))));
+    let items: Vec<LogItemData> = state
+        .display_logs
+        .iter()
+        .map(|log| {
+            let color = match log.level {
+                LogLevel::Fatal | LogLevel::Error => Color::from_rgb_u8(255, 85, 85),
+                LogLevel::Warn => Color::from_rgb_u8(255, 184, 108),
+                LogLevel::Info => Color::from_rgb_u8(80, 250, 123),
+                LogLevel::Debug => Color::from_rgb_u8(248, 248, 242),
+                LogLevel::Verbose => Color::from_rgb_u8(98, 114, 164),
+            };
+            LogItemData {
+                timestamp: log.timestamp.clone().into(),
+                level: log.level.as_str().into(),
+                tag: log.tag.clone().into(),
+                package_name: log
+                    .package_name
+                    .clone()
+                    .unwrap_or_else(|| {
+                        log.process_name
+                            .as_ref()
+                            .map(|name| format!("— ({name})"))
+                            .unwrap_or_else(|| "—".into())
+                    })
+                    .into(),
+                package_filter: log.package_name.clone().unwrap_or_default().into(),
+                message: log.message.clone().into(),
+                level_color: color,
+            }
+        })
+        .collect();
+    ui.global::<App>()
+        .invoke_update_log_entries(ModelRc::from(std::rc::Rc::new(VecModel::from(items))));
 }
 
 /// 将 MVI State 投影更新到 Slint UI 属性（公共状态 + 当前激活页；其余页在切回时由 SwitchTab 触发投影）
@@ -309,25 +338,37 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
     let model = std::rc::Rc::new(VecModel::from(devices));
     ui.global::<App>().set_device_list(ModelRc::from(model));
 
-    ui.global::<App>().set_selected_device_index(state.selected_device_idx as i32);
-    ui.global::<App>().set_current_serial(state.current_serial().into());
+    ui.global::<App>()
+        .set_selected_device_index(state.selected_device_idx as i32);
+    ui.global::<App>()
+        .set_current_serial(state.current_serial().into());
     ui.global::<App>().set_is_busy(state.is_busy);
-    ui.global::<App>().set_status_message(state.status_message.clone().into());
-    ui.global::<App>().set_shell_output(state.shell_output.clone().into());
+    ui.global::<App>()
+        .set_status_message(state.status_message.clone().into());
+    ui.global::<App>()
+        .set_shell_output(state.shell_output.clone().into());
     ui.global::<App>().set_is_shell_busy(state.is_shell_busy);
     ui.global::<App>().set_active_tab(state.active_tab);
     ui.global::<App>().set_is_mirroring(state.is_mirroring());
 
     // 2. 更新设备硬件详情（概览与无线页共享）
-    if let Some(detail) = state.selected_device_detail.as_ref()
+    if let Some(detail) = state
+        .selected_device_detail
+        .as_ref()
         .filter(|detail| detail.serial == state.current_serial())
     {
-        ui.global::<App>().set_device_model(detail.model.clone().into());
-        ui.global::<App>().set_device_brand(detail.brand.clone().into());
-        ui.global::<App>().set_device_android_version(detail.android_version.clone().into());
-        ui.global::<App>().set_device_sdk(detail.sdk_api_level.to_string().into());
-        ui.global::<App>().set_device_resolution(detail.screen_resolution.clone().into());
-        ui.global::<App>().set_device_abi(detail.cpu_abi.clone().into());
+        ui.global::<App>()
+            .set_device_model(detail.model.clone().into());
+        ui.global::<App>()
+            .set_device_brand(detail.brand.clone().into());
+        ui.global::<App>()
+            .set_device_android_version(detail.android_version.clone().into());
+        ui.global::<App>()
+            .set_device_sdk(detail.sdk_api_level.to_string().into());
+        ui.global::<App>()
+            .set_device_resolution(detail.screen_resolution.clone().into());
+        ui.global::<App>()
+            .set_device_abi(detail.cpu_abi.clone().into());
         let battery_str = detail
             .battery_level
             .map(|l| format!("{}%", l))
@@ -335,9 +376,17 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
         ui.global::<App>().set_device_battery(battery_str.into());
         let imei_str = detail.imei.as_deref().unwrap_or("未知");
         ui.global::<App>().set_device_imei(imei_str.into());
-        ui.global::<App>().set_device_wifi_ip(detail.wifi_ip.as_deref().unwrap_or("未连接或无法获取").into());
-        ui.global::<App>().set_device_wifi_mac(detail.wifi_mac.as_deref().unwrap_or("无法获取").into());
-        ui.global::<App>().set_device_bluetooth_mac(detail.bluetooth_mac.as_deref().unwrap_or("无法获取").into());
+        ui.global::<App>().set_device_wifi_ip(
+            detail
+                .wifi_ip
+                .as_deref()
+                .unwrap_or("未连接或无法获取")
+                .into(),
+        );
+        ui.global::<App>()
+            .set_device_wifi_mac(detail.wifi_mac.as_deref().unwrap_or("无法获取").into());
+        ui.global::<App>()
+            .set_device_bluetooth_mac(detail.bluetooth_mac.as_deref().unwrap_or("无法获取").into());
     } else {
         ui.global::<App>().set_device_model("暂无选中设备".into());
         ui.global::<App>().set_device_brand("-".into());
@@ -361,7 +410,8 @@ fn apply_packages_to_ui(ui: &AppWindow, state: &AppViewState) {
         AppFilterType::ThirdParty => 2,
     };
     ui.global::<App>().set_app_filter_tab(filter_idx);
-    ui.global::<App>().set_app_search_query(state.app_search_query.clone().into());
+    ui.global::<App>()
+        .set_app_search_query(state.app_search_query.clone().into());
 
     let app_query = state.app_search_query.trim().to_lowercase();
     let app_items_vec: Vec<AppItemData> = state
@@ -396,7 +446,11 @@ fn apply_packages_to_ui(ui: &AppWindow, state: &AppViewState) {
     let app_status = if app_query.is_empty() {
         state.app_status_message.clone()
     } else {
-        format!("匹配 {} / {} 个应用", app_items_vec.len(), state.app_list.len())
+        format!(
+            "匹配 {} / {} 个应用",
+            app_items_vec.len(),
+            state.app_list.len()
+        )
     };
     ui.global::<App>().set_app_status_text(app_status.into());
     let app_model = std::rc::Rc::new(VecModel::from(app_items_vec));

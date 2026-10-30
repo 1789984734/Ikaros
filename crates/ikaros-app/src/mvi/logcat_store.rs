@@ -1,11 +1,11 @@
+use super::{AppIntent, AppStore};
+use crate::mvi::log_recording;
+use crate::mvi::logcat::stream_log_batches;
+use ikaros_domain::{LogEntry, LogLevel};
 use std::path::PathBuf;
 use std::sync::Arc;
-use super::{AppIntent, AppStore};
-use crate::mvi::logcat::stream_log_batches;
-use crate::mvi::log_recording;
-use ikaros_domain::{LogEntry, LogLevel};
 
-use super::{LOG_HISTORY_LIMIT, DISPLAY_LOG_LIMIT};
+use super::{DISPLAY_LOG_LIMIT, LOG_HISTORY_LIMIT};
 
 impl AppStore {
     pub(super) fn stop_logcat_stream(&mut self) {
@@ -79,7 +79,10 @@ impl AppStore {
         let previous = self.state.is_log_recording_enabled;
         tokio::spawn(async move {
             if let Err(error) = recorder.set_enabled(enabled).await {
-                let _ = tx.send(AppIntent::LogRecordingUpdated { enabled: previous, error: Some(error) });
+                let _ = tx.send(AppIntent::LogRecordingUpdated {
+                    enabled: previous,
+                    error: Some(error),
+                });
             }
         });
     }
@@ -104,7 +107,8 @@ impl AppStore {
         tokio::spawn(async move {
             if let Err(error) = log_recording::open_directory(&directory).await {
                 let _ = tx.send(AppIntent::SetStatusMessage {
-                    message: format!("打开日志文件夹失败：{error}"), is_busy: false,
+                    message: format!("打开日志文件夹失败：{error}"),
+                    is_busy: false,
                 });
             }
         });
@@ -156,9 +160,13 @@ impl AppStore {
             self.on_set_log_level_filter(Some(level));
             return;
         }
-        let Some(field) = crate::log_filter::Field::from_key(&field) else { return };
+        let Some(field) = crate::log_filter::Field::from_key(&field) else {
+            return;
+        };
         if let Some(query) = crate::mvi::log_query::LogQuery::append_filter(
-            &self.state.log_search_query, field, &value,
+            &self.state.log_search_query,
+            field,
+            &value,
         ) {
             self.on_set_log_search_query(query);
         }
@@ -174,12 +182,25 @@ impl AppStore {
         let tx = self.intent_sender.clone();
         let generation = self.logcat_generation;
         tokio::spawn(async move {
-            let error = usecases.clear_logs(&serial).await.err().map(|error| error.to_string());
-            let _ = tx.send(AppIntent::LogcatCleared { generation, resume, error });
+            let error = usecases
+                .clear_logs(&serial)
+                .await
+                .err()
+                .map(|error| error.to_string());
+            let _ = tx.send(AppIntent::LogcatCleared {
+                generation,
+                resume,
+                error,
+            });
         });
     }
 
-    pub(super) fn on_logcat_cleared(&mut self, generation: u64, resume: bool, error: Option<String>) {
+    pub(super) fn on_logcat_cleared(
+        &mut self,
+        generation: u64,
+        resume: bool,
+        error: Option<String>,
+    ) {
         if generation != self.logcat_generation {
             return;
         }
@@ -206,7 +227,10 @@ impl AppStore {
                 },
                 None => "无法确定保存目录".into(),
             };
-            let _ = tx.send(AppIntent::SetStatusMessage { message, is_busy: false });
+            let _ = tx.send(AppIntent::SetStatusMessage {
+                message,
+                is_busy: false,
+            });
         });
     }
 }

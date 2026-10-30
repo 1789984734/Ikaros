@@ -1,11 +1,11 @@
+use crate::{shell_quote, AdbClient};
+use async_trait::async_trait;
+use ikaros_domain::{DeviceRepository, DomainError, RemoteFile, SyncRepository, TransferProgress};
 use std::path::Path;
 use std::time::{Duration, Instant};
-use async_trait::async_trait;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use ikaros_domain::{DeviceRepository, DomainError, RemoteFile, SyncRepository, TransferProgress};
-use crate::{shell_quote, AdbClient};
 
 /// 进度事件的发送间隔; 大文件按块回调非常频繁, 直接透传会以每块一次的频率刷爆 UI 刷新通道
 const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(100);
@@ -18,7 +18,10 @@ struct ProgressThrottle {
 
 impl ProgressThrottle {
     fn new(interval: Duration) -> Self {
-        Self { interval, last_emit: None }
+        Self {
+            interval,
+            last_emit: None,
+        }
     }
 
     fn should_emit(&mut self, now: Instant) -> bool {
@@ -91,12 +94,14 @@ impl AdbClient {
             DomainError::FileSyncFailed(format!("发送 Sync 命令 {:?} 失败: {}", id, e))
         })?;
         let len_le = (payload.len() as u32).to_le_bytes();
-        stream.write_all(&len_le).await.map_err(|e| {
-            DomainError::FileSyncFailed(format!("发送长度前缀失败: {}", e))
-        })?;
-        stream.write_all(payload).await.map_err(|e| {
-            DomainError::FileSyncFailed(format!("发送数据载荷失败: {}", e))
-        })?;
+        stream
+            .write_all(&len_le)
+            .await
+            .map_err(|e| DomainError::FileSyncFailed(format!("发送长度前缀失败: {}", e)))?;
+        stream
+            .write_all(payload)
+            .await
+            .map_err(|e| DomainError::FileSyncFailed(format!("发送数据载荷失败: {}", e)))?;
         Ok(())
     }
 
@@ -120,10 +125,13 @@ impl AdbClient {
 
         if &tag == b"STAT" {
             let mut meta = [0u8; 12];
-            stream.read_exact(&mut meta).await.map_err(|e| {
-                DomainError::FileSyncFailed(format!("读取 STAT 元数据失败: {}", e))
-            })?;
-            return Ok(Some(u32::from_le_bytes(meta[4..8].try_into().unwrap()) as u64));
+            stream
+                .read_exact(&mut meta)
+                .await
+                .map_err(|e| DomainError::FileSyncFailed(format!("读取 STAT 元数据失败: {}", e)))?;
+            return Ok(Some(
+                u32::from_le_bytes(meta[4..8].try_into().unwrap()) as u64
+            ));
         }
 
         if &tag == b"FAIL" {
@@ -146,7 +154,11 @@ impl AdbClient {
 #[async_trait]
 impl SyncRepository for AdbClient {
     /// 列出远程目录文件列表 (LIST 协议)
-    async fn list_directory(&self, serial: &str, path: &str) -> Result<Vec<RemoteFile>, DomainError> {
+    async fn list_directory(
+        &self,
+        serial: &str,
+        path: &str,
+    ) -> Result<Vec<RemoteFile>, DomainError> {
         let mut stream = self.open_sync_connection(serial).await?;
         Self::send_sync_request(&mut stream, b"LIST", path.as_bytes()).await?;
 
@@ -376,14 +388,13 @@ impl SyncRepository for AdbClient {
         Self::send_sync_request(&mut stream, b"SEND", header.as_bytes()).await?;
 
         let mut local_file = File::open(local_path).await.map_err(|e| {
-            DomainError::FileSyncFailed(format!("打开本地待推送文件 ({:?}) 失败: {}", local_path, e))
+            DomainError::FileSyncFailed(format!(
+                "打开本地待推送文件 ({:?}) 失败: {}",
+                local_path, e
+            ))
         })?;
 
-        let total_size = local_file
-            .metadata()
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let total_size = local_file.metadata().await.map(|m| m.len()).unwrap_or(0);
 
         let filename = local_path
             .file_name()
@@ -398,24 +409,28 @@ impl SyncRepository for AdbClient {
         let mut buf = vec![0u8; 64 * 1024];
 
         loop {
-            let n = local_file.read(&mut buf).await.map_err(|e| {
-                DomainError::FileSyncFailed(format!("读取本地文件失败: {}", e))
-            })?;
+            let n = local_file
+                .read(&mut buf)
+                .await
+                .map_err(|e| DomainError::FileSyncFailed(format!("读取本地文件失败: {}", e)))?;
             if n == 0 {
                 break;
             }
 
             // 发送 DATA 包
-            stream.write_all(b"DATA").await.map_err(|e| {
-                DomainError::FileSyncFailed(format!("发送 DATA 标记失败: {}", e))
-            })?;
+            stream
+                .write_all(b"DATA")
+                .await
+                .map_err(|e| DomainError::FileSyncFailed(format!("发送 DATA 标记失败: {}", e)))?;
             let len_le = (n as u32).to_le_bytes();
-            stream.write_all(&len_le).await.map_err(|e| {
-                DomainError::FileSyncFailed(format!("发送 DATA 块长度失败: {}", e))
-            })?;
-            stream.write_all(&buf[..n]).await.map_err(|e| {
-                DomainError::FileSyncFailed(format!("发送 DATA 块内容失败: {}", e))
-            })?;
+            stream
+                .write_all(&len_le)
+                .await
+                .map_err(|e| DomainError::FileSyncFailed(format!("发送 DATA 块长度失败: {}", e)))?;
+            stream
+                .write_all(&buf[..n])
+                .await
+                .map_err(|e| DomainError::FileSyncFailed(format!("发送 DATA 块内容失败: {}", e)))?;
 
             transferred += n as u64;
             let elapsed = start_time.elapsed().as_secs_f64();
@@ -443,18 +458,21 @@ impl SyncRepository for AdbClient {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as u32;
-        stream.write_all(b"DONE").await.map_err(|e| {
-            DomainError::FileSyncFailed(format!("发送 DONE 标记失败: {}", e))
-        })?;
-        stream.write_all(&now_sec.to_le_bytes()).await.map_err(|e| {
-            DomainError::FileSyncFailed(format!("发送 DONE 时间戳失败: {}", e))
-        })?;
+        stream
+            .write_all(b"DONE")
+            .await
+            .map_err(|e| DomainError::FileSyncFailed(format!("发送 DONE 标记失败: {}", e)))?;
+        stream
+            .write_all(&now_sec.to_le_bytes())
+            .await
+            .map_err(|e| DomainError::FileSyncFailed(format!("发送 DONE 时间戳失败: {}", e)))?;
 
         // 校验设备端确认回复
         let mut status = [0u8; 4];
-        stream.read_exact(&mut status).await.map_err(|e| {
-            DomainError::FileSyncFailed(format!("读取推送结果响应失败: {}", e))
-        })?;
+        stream
+            .read_exact(&mut status)
+            .await
+            .map_err(|e| DomainError::FileSyncFailed(format!("读取推送结果响应失败: {}", e)))?;
 
         if &status != b"OKAY" {
             let mut len_buf = [0u8; 4];
@@ -519,11 +537,7 @@ impl SyncRepository for AdbClient {
         let target = format!("{}/{}", parent, new_name);
         self.run_file_shell(
             serial,
-            &format!(
-                "mv {} {}",
-                shell_quote(remote_path),
-                shell_quote(&target)
-            ),
+            &format!("mv {} {}", shell_quote(remote_path), shell_quote(&target)),
             "重命名",
         )
         .await

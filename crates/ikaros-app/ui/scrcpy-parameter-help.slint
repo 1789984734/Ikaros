@@ -17,9 +17,9 @@ export component ScrcpyParameterHelp inherits Rectangle {
     min-width: 0px;
     preferred-width: 0px;
     horizontal-stretch: 1;
-    min-height: root.expanded ? 160px : 44px;
-    preferred-height: root.expanded ? 320px : 44px;
-    max-height: root.expanded ? 360px : 44px;
+    min-height: root.expanded ? 160px : 48px;
+    preferred-height: root.expanded ? 320px : 48px;
+    max-height: root.expanded ? 360px : 48px;
     vertical-stretch: root.expanded ? 1 : 0;
     border-radius: 8px;
     border-width: 1px;
@@ -31,7 +31,7 @@ export component ScrcpyParameterHelp inherits Rectangle {
         spacing: 8px;
 
         HorizontalLayout {
-            height: 28px;
+            height: 32px;
             spacing: 12px;
             Button {
                 text: root.expanded ? "收起常用参数对照表" : "展开常用参数对照表";

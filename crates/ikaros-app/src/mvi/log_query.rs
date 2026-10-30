@@ -58,9 +58,11 @@ impl LogQuery {
         if value.trim().is_empty() {
             return None;
         }
-        if Self::parse(query).terms.iter().any(|term| {
-            term.field == field && !term.excluded && term.value == value.to_lowercase()
-        }) {
+        if Self::parse(query)
+            .terms
+            .iter()
+            .any(|term| term.field == field && !term.excluded && term.value == value.to_lowercase())
+        {
             return Some(query.to_string());
         }
         let prefix = if shlex::split(query).is_some() {
@@ -232,7 +234,10 @@ mod tests {
         let query = LogQuery::append_filter(original, Field::Tag, &entry.tag).unwrap();
         assert!(query.starts_with(original));
         assert!(LogQuery::parse(&query).matches(&entry));
-        assert_eq!(LogQuery::append_filter(&query, Field::Tag, &entry.tag).unwrap(), query);
+        assert_eq!(
+            LogQuery::append_filter(&query, Field::Tag, &entry.tag).unwrap(),
+            query
+        );
         entry.tag = "Other".into();
         assert!(!LogQuery::parse(&query).matches(&entry));
 
@@ -247,8 +252,12 @@ mod tests {
     fn context_filters_handle_empty_duplicate_and_incomplete_queries() {
         assert!(LogQuery::append_filter("timeout", Field::Tag, " ").is_none());
         let query = "TAG:\"Network Worker\" timeout";
-        assert_eq!(LogQuery::append_filter(query, Field::Tag, "network worker").unwrap(), query);
-        let query = LogQuery::append_filter("message:\"unfinished", Field::Package, "com.example").unwrap();
+        assert_eq!(
+            LogQuery::append_filter(query, Field::Tag, "network worker").unwrap(),
+            query
+        );
+        let query =
+            LogQuery::append_filter("message:\"unfinished", Field::Package, "com.example").unwrap();
         assert!(shlex::split(&query).is_some());
         assert!(LogQuery::parse(&query).has_positive_filter(Field::Package));
     }

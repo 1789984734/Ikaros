@@ -1,9 +1,4 @@
-use crate::{
-    mvi::AppIntent,
-    App,
-    scrcpy,
-    AppWindow,
-};
+use crate::{mvi::AppIntent, scrcpy, scrcpy_ui, App, AppWindow};
 use ikaros_domain::{AppFilterType, LogLevel};
 use slint::{ComponentHandle, ModelRc, SharedString};
 use std::path::PathBuf;
@@ -19,7 +14,10 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
         .into_iter()
         .map(Into::into)
         .collect();
-    app.global::<App>().set_wireless_history(ModelRc::from(std::rc::Rc::new(slint::VecModel::from(startup_history))));
+    app.global::<App>()
+        .set_wireless_history(ModelRc::from(std::rc::Rc::new(slint::VecModel::from(
+            startup_history,
+        ))));
     // 终端命令历史（仅保存在本会话内存中）
     let shell_history: std::rc::Rc<std::cell::RefCell<Vec<SharedString>>> = Default::default();
     let shell_cursor: std::rc::Rc<std::cell::Cell<usize>> = Default::default();
@@ -73,12 +71,17 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
         let shell_history = shell_history.clone();
         let shell_cursor = shell_cursor.clone();
         app.global::<App>().on_shell_history_up(move || {
-            let Some(ui) = ui_handle.upgrade() else { return };
+            let Some(ui) = ui_handle.upgrade() else {
+                return;
+            };
             let items = shell_history.borrow();
-            if items.is_empty() { return; }
+            if items.is_empty() {
+                return;
+            }
             let index = shell_cursor.get().min(items.len()).saturating_sub(1);
             shell_cursor.set(index);
-            ui.global::<App>().set_shell_input_text(items[index].clone());
+            ui.global::<App>()
+                .set_shell_input_text(items[index].clone());
         });
     }
     {
@@ -86,10 +89,16 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
         let shell_history = shell_history.clone();
         let shell_cursor = shell_cursor.clone();
         app.global::<App>().on_shell_history_down(move || {
-            let Some(ui) = ui_handle.upgrade() else { return };
+            let Some(ui) = ui_handle.upgrade() else {
+                return;
+            };
             let index = (shell_cursor.get() + 1).min(shell_history.borrow().len());
             shell_cursor.set(index);
-            let text = shell_history.borrow().get(index).cloned().unwrap_or_default();
+            let text = shell_history
+                .borrow()
+                .get(index)
+                .cloned()
+                .unwrap_or_default();
             ui.global::<App>().set_shell_input_text(text);
         });
     }
@@ -102,14 +111,29 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
             if let Some(ui) = ui_handle.upgrade() {
                 let options = scrcpy::ScrcpyLaunchOptions {
                     binary_path: ui.global::<App>().get_scrcpy_path().to_string(),
-                    max_size: scrcpy::numeric_preset(&scrcpy::MAX_SIZE_PRESETS, ui.global::<App>().get_scrcpy_max_size() as usize),
-                    max_fps: scrcpy::numeric_preset(&scrcpy::MAX_FPS_PRESETS, ui.global::<App>().get_scrcpy_max_fps() as usize),
-                    bit_rate: scrcpy::choice_preset(&scrcpy::BIT_RATE_PRESETS, ui.global::<App>().get_scrcpy_bit_rate() as usize),
-                    video_codec: scrcpy::choice_preset(&scrcpy::VIDEO_CODECS, ui.global::<App>().get_scrcpy_codec() as usize),
+                    max_size: scrcpy::numeric_preset(
+                        &scrcpy::MAX_SIZE_PRESETS,
+                        ui.global::<App>().get_scrcpy_max_size() as usize,
+                    ),
+                    max_fps: scrcpy::numeric_preset(
+                        &scrcpy::MAX_FPS_PRESETS,
+                        ui.global::<App>().get_scrcpy_max_fps() as usize,
+                    ),
+                    bit_rate: scrcpy::choice_preset(
+                        &scrcpy::BIT_RATE_PRESETS,
+                        ui.global::<App>().get_scrcpy_bit_rate() as usize,
+                    ),
+                    video_codec: scrcpy::choice_preset(
+                        &scrcpy::VIDEO_CODECS,
+                        ui.global::<App>().get_scrcpy_codec() as usize,
+                    ),
                     audio: ui.global::<App>().get_scrcpy_audio(),
                     stay_awake: ui.global::<App>().get_scrcpy_stay_awake(),
-                    extra_args: scrcpy::parse_extra_args(&ui.global::<App>().get_scrcpy_extra_args()),
+                    extra_args: scrcpy::parse_extra_args(
+                        &ui.global::<App>().get_scrcpy_extra_args(),
+                    ),
                 };
+                scrcpy_ui::save_extra_args(ui.global::<App>().get_scrcpy_extra_args().to_string());
                 let _ = tx.send(AppIntent::StartMirroring(options));
             }
         });
@@ -126,7 +150,9 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
     {
         let ui_handle = app_weak.clone();
         app.global::<App>().on_browse_scrcpy_path(move || {
-            let Some(ui) = ui_handle.upgrade() else { return };
+            let Some(ui) = ui_handle.upgrade() else {
+                return;
+            };
 
             // 从当前已填路径出发定位起始目录, 减少重复导航
             let current = PathBuf::from(ui.global::<App>().get_scrcpy_path().to_string());
@@ -134,14 +160,18 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
             let start_dir = if current.is_dir() {
                 Some(current)
             } else {
-                current.parent().map(|p| p.to_path_buf()).filter(|p| p.is_dir())
+                current
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .filter(|p| p.is_dir())
             };
             if let Some(dir) = start_dir {
                 dialog = dialog.set_directory(dir);
             }
 
             if let Some(folder) = dialog.pick_folder() {
-                ui.global::<App>().set_scrcpy_path(folder.to_string_lossy().to_string().into());
+                ui.global::<App>()
+                    .set_scrcpy_path(folder.to_string_lossy().to_string().into());
             }
         });
     }
@@ -229,9 +259,10 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
 
     {
         let tx = tx.clone();
-        app.global::<App>().on_open_log_recording_directory(move || {
-            let _ = tx.send(AppIntent::OpenLogRecordingDirectory);
-        });
+        app.global::<App>()
+            .on_open_log_recording_directory(move || {
+                let _ = tx.send(AppIntent::OpenLogRecordingDirectory);
+            });
     }
 
     {
@@ -326,7 +357,10 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
             let address = address.to_string();
             let history = remember_wireless_address(&address);
             if let Some(ui) = ui_handle.upgrade() {
-                ui.global::<App>().set_wireless_history(ModelRc::from(std::rc::Rc::new(slint::VecModel::from(history))));
+                ui.global::<App>()
+                    .set_wireless_history(ModelRc::from(std::rc::Rc::new(slint::VecModel::from(
+                        history,
+                    ))));
             }
             let _ = tx.send(AppIntent::WirelessConnect(address));
         });
@@ -344,7 +378,8 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
             // 立即用概览页已知的 Wi-Fi IP 预填地址框，切换成功后即可直接连接
             if let Some(ui) = ui_handle.upgrade() {
                 if let Some(ip) = parse_wifi_ip(ui.global::<App>().get_device_wifi_ip().as_str()) {
-                    ui.global::<App>().set_wireless_address(format!("{ip}:5555").into());
+                    ui.global::<App>()
+                        .set_wireless_address(format!("{ip}:5555").into());
                 }
             }
             let _ = tx.send(AppIntent::EnableWirelessMode);
@@ -360,9 +395,12 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
     }
     {
         let tx = tx.clone();
-        app.global::<App>().on_capture_screen_recording(move |seconds| {
-            let _ = tx.send(AppIntent::CaptureScreenRecording { seconds: seconds as u32 });
-        });
+        app.global::<App>()
+            .on_capture_screen_recording(move |seconds| {
+                let _ = tx.send(AppIntent::CaptureScreenRecording {
+                    seconds: seconds as u32,
+                });
+            });
     }
     {
         let tx = tx.clone();
@@ -392,12 +430,13 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
     }
     {
         let tx = tx.clone();
-        app.global::<App>().on_rename_file(move |old_path, new_name| {
-            let _ = tx.send(AppIntent::RenameRemoteFile {
-                old_path: old_path.to_string(),
-                new_name: new_name.to_string(),
+        app.global::<App>()
+            .on_rename_file(move |old_path, new_name| {
+                let _ = tx.send(AppIntent::RenameRemoteFile {
+                    old_path: old_path.to_string(),
+                    new_name: new_name.to_string(),
+                });
             });
-        });
     }
     {
         let tx = tx.clone();
@@ -469,5 +508,9 @@ fn remember_wireless_address(address: &str) -> Vec<SharedString> {
     config.wireless_history.insert(0, address.to_string());
     config.wireless_history.truncate(8);
     crate::app_config::save(&config);
-    config.wireless_history.into_iter().map(Into::into).collect()
+    config
+        .wireless_history
+        .into_iter()
+        .map(Into::into)
+        .collect()
 }

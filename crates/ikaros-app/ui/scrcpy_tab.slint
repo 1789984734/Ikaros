@@ -35,31 +35,6 @@ export component ScrcpyTab inherits VerticalLayout {
 
         Text {
             width: 76px;
-            text: "本体路径";
-            vertical-alignment: center;
-            font-size: 13px;
-            color: #8b92b0;
-        }
-
-        LineEdit {
-            text <=> App.scrcpy_path;
-            min-width: 0px;
-            preferred-width: 0px;
-            horizontal-stretch: 1;
-            placeholder-text: "scrcpy 可执行文件路径或其所在目录";
-        }
-
-        Button {
-            text: "📁 浏览";
-            clicked => { App.browse_scrcpy_path(); }
-        }
-    }
-
-    HorizontalLayout {
-        spacing: 8px;
-
-        Text {
-            width: 76px;
             text: "视频参数";
             vertical-alignment: center;
             font-size: 13px;

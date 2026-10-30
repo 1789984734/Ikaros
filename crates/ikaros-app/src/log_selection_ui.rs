@@ -94,14 +94,17 @@ fn publish(ui: &AppWindow, selection: &Selection) {
     let flags = (0..ui.global::<App>().get_log_items().row_count())
         .map(|index| selection.rows.contains(&index))
         .collect::<Vec<_>>();
-    ui.global::<App>().set_log_selection(ModelRc::from(Rc::new(VecModel::from(flags))));
-    ui.global::<App>().set_log_selection_count(selection.rows.len() as i32);
+    ui.global::<App>()
+        .set_log_selection(ModelRc::from(Rc::new(VecModel::from(flags))));
+    ui.global::<App>()
+        .set_log_selection_count(selection.rows.len() as i32);
 }
 
 pub fn bind(ui: &AppWindow) {
     let selection = Rc::new(RefCell::new(Selection::default()));
     let entries = Rc::new(VecModel::<LogItemData>::default());
-    ui.global::<App>().set_log_items(ModelRc::from(entries.clone()));
+    ui.global::<App>()
+        .set_log_items(ModelRc::from(entries.clone()));
     bind_entries(ui, selection.clone(), entries);
     bind_selection(ui, selection.clone());
     bind_actions(ui, selection);
@@ -161,7 +164,8 @@ fn bind_follow(ui: &AppWindow, pending: Rc<RefCell<Option<Vec<LogItemData>>>>) {
         let Some(ui) = weak.upgrade() else { return };
         let latest = pending.borrow_mut().take();
         if let Some(latest) = latest {
-            ui.global::<App>().invoke_update_log_entries(ModelRc::from(Rc::new(VecModel::from(latest))));
+            ui.global::<App>()
+                .invoke_update_log_entries(ModelRc::from(Rc::new(VecModel::from(latest))));
         }
     });
 }
@@ -185,15 +189,16 @@ fn update_rows<T: Clone + PartialEq + 'static>(entries: &VecModel<T>, old: &[T],
 fn bind_selection(ui: &AppWindow, selection: Rc<RefCell<Selection>>) {
     let weak = ui.as_weak();
     let state = selection.clone();
-    ui.global::<App>().on_select_log(move |index, shift, additive, context| {
-        let Some(ui) = weak.upgrade() else { return };
-        if index < 0 || index as usize >= ui.global::<App>().get_log_items().row_count() {
-            return;
-        }
-        let mut state = state.borrow_mut();
-        state.select(index as usize, shift, additive, context);
-        publish(&ui, &state);
-    });
+    ui.global::<App>()
+        .on_select_log(move |index, shift, additive, context| {
+            let Some(ui) = weak.upgrade() else { return };
+            if index < 0 || index as usize >= ui.global::<App>().get_log_items().row_count() {
+                return;
+            }
+            let mut state = state.borrow_mut();
+            state.select(index as usize, shift, additive, context);
+            publish(&ui, &state);
+        });
     let weak = ui.as_weak();
     ui.global::<App>().on_drag_select_log(move |index| {
         let Some(ui) = weak.upgrade() else { return };
@@ -209,14 +214,19 @@ fn bind_selection(ui: &AppWindow, selection: Rc<RefCell<Selection>>) {
 fn bind_actions(ui: &AppWindow, selection: Rc<RefCell<Selection>>) {
     let weak = ui.as_weak();
     let state = selection.clone();
-    ui.global::<App>().on_copy_selected_logs(move |contents_only| {
-        let Some(ui) = weak.upgrade() else { return };
-        let rows = ui.global::<App>().get_log_items().iter().collect::<Vec<_>>();
-        let text = state.borrow().copy_text(&rows, contents_only);
-        if !text.is_empty() {
-            ui.global::<App>().invoke_copy_clipboard(text.into());
-        }
-    });
+    ui.global::<App>()
+        .on_copy_selected_logs(move |contents_only| {
+            let Some(ui) = weak.upgrade() else { return };
+            let rows = ui
+                .global::<App>()
+                .get_log_items()
+                .iter()
+                .collect::<Vec<_>>();
+            let text = state.borrow().copy_text(&rows, contents_only);
+            if !text.is_empty() {
+                ui.global::<App>().invoke_copy_clipboard(text.into());
+            }
+        });
     let weak = ui.as_weak();
     let state = selection.clone();
     ui.global::<App>().on_select_all_logs(move || {

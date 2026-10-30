@@ -6,17 +6,30 @@ async fn test_live_app_names_and_icons() {
     let adb = AdbClient::default();
     let devices = adb.list_devices().await.expect("获取设备失败");
     for device in devices {
-        let apps = adb.list_packages(&device.serial, AppFilterType::All)
-            .await.expect("查询应用信息失败");
-        let user_id = adb.execute_shell(&device.serial, "am get-current-user")
-            .await.expect("查询当前用户失败").trim().parse::<u32>()
+        let apps = adb
+            .list_packages(&device.serial, AppFilterType::All)
+            .await
+            .expect("查询应用信息失败");
+        let user_id = adb
+            .execute_shell(&device.serial, "am get-current-user")
+            .await
+            .expect("查询当前用户失败")
+            .trim()
+            .parse::<u32>()
             .expect("当前用户 ID 应为非负整数");
-        let output = adb.execute_shell(&device.serial, &format!("pm list packages --user {user_id}"))
-            .await.expect("查询包名失败");
-        let expected: std::collections::HashSet<_> = output.lines()
-            .filter_map(|line| line.trim().strip_prefix("package:")).collect();
-        let actual: std::collections::HashSet<_> = apps.iter()
-            .map(|app| app.package_name.as_str()).collect();
+        let output = adb
+            .execute_shell(
+                &device.serial,
+                &format!("pm list packages --user {user_id}"),
+            )
+            .await
+            .expect("查询包名失败");
+        let expected: std::collections::HashSet<_> = output
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("package:"))
+            .collect();
+        let actual: std::collections::HashSet<_> =
+            apps.iter().map(|app| app.package_name.as_str()).collect();
         assert_eq!(actual, expected, "应用列表不能漏包");
         assert!(apps.iter().all(|app| !app.app_name.is_empty()));
         assert!(apps.iter().any(|app| app.app_name != app.package_name));
@@ -32,11 +45,18 @@ async fn test_live_app_names_and_icons() {
         }
         assert!(icons > 0, "应能读取真实应用图标");
         let sample = apps.iter().find(|app| !app.is_system).unwrap_or(&apps[0]);
-        let (name, code) = adb.get_package_detail(&device.serial, &sample.package_name)
-            .await.expect("查询版本失败");
+        let (name, code) = adb
+            .get_package_detail(&device.serial, &sample.package_name)
+            .await
+            .expect("查询版本失败");
         assert_eq!(sample.version_name, if name == "null" { "" } else { &name });
         assert_eq!(sample.version_code, code);
-        println!("{}: {} 个应用，{} 个真实图标", device.serial, apps.len(), icons);
+        println!(
+            "{}: {} 个应用，{} 个真实图标",
+            device.serial,
+            apps.len(),
+            icons
+        );
     }
 }
 
@@ -104,7 +124,10 @@ async fn test_live_apk_install_flow() {
         .expect("查询应用失败");
 
     if let Some(target_app) = apps.first() {
-        println!("测试提取现有包 [{}] 模拟拖拽安装流程...", target_app.package_name);
+        println!(
+            "测试提取现有包 [{}] 模拟拖拽安装流程...",
+            target_app.package_name
+        );
         let temp_local_apk = PathBuf::from("/tmp/test_live_drag_package.apk");
 
         // 1. 先将设备上的 APK 拉取到本地
@@ -116,7 +139,11 @@ async fn test_live_apk_install_flow() {
         // 2. 调用 install_apk 重新覆盖安装（模拟用户拖拽 APK 释放安装）
         println!("开始执行 install_apk 模拟拖拽释放覆盖安装...");
         let install_result = adb.install_apk(serial, &temp_local_apk).await;
-        assert!(install_result.is_ok(), "APK 安装应返回成功: {:?}", install_result);
+        assert!(
+            install_result.is_ok(),
+            "APK 安装应返回成功: {:?}",
+            install_result
+        );
         println!("APK 拖拽安装与覆盖校验成功！");
 
         // 3. 清理本地临时文件

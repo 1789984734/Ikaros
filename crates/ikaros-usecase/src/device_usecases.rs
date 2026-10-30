@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use ikaros_domain::{Device, DeviceDetail, DeviceRepository, DomainError};
+use std::sync::Arc;
 use tokio::sync::{mpsc::UnboundedSender, watch::Receiver};
 
 /// 设备管理相关用例集合
