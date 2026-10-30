@@ -107,6 +107,8 @@ macOS 提供原生“窗口”菜单，支持最小化、缩放，以及当前�
 - **应用程序目录**：`/Applications/Ikaros.app`
 - **项目独立产物**：`dist/Ikaros.app`
 
+打包脚本会覆盖已有的 `dist/Ikaros.app`，并在成功后执行 `cargo clean` 清理 `target/`，只保留最新应用产物；下次构建会重新编译依赖。
+
 可以通过以下方式直接启动：
 * 按下 `Cmd + 空格`（Spotlight）或 Raycast，输入 `Ikaros` 回车打开；
 * 在 Finder 的“应用程序”中双击 `Ikaros.app`；

@@ -100,6 +100,10 @@ elif [ -w "$HOME/Applications" ]; then
     echo "🎉 成功安装到用户应用程序: $HOME/Applications/$APP_NAME"
 fi
 
+# 8. 清理编译缓存，仅保留最新应用产物
+echo "🧹 清理 Cargo 编译缓存..."
+cargo clean --manifest-path "$ROOT_DIR/Cargo.toml" --target-dir "$ROOT_DIR/target"
+
 echo "=================================================="
 echo "✅ 打包完成！"
 echo "📦 独立应用包: $APP_DIR"
