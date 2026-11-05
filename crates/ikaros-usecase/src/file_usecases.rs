@@ -3,6 +3,13 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
+#[path = "file_paths.rs"]
+mod file_paths;
+#[path = "file_upload.rs"]
+mod file_upload;
+
+pub use file_paths::normalize_remote_path;
+
 /// 文件浏览与传输用例
 pub struct FileUseCases {
     sync_repo: Arc<dyn SyncRepository>,

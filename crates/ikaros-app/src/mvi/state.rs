@@ -42,11 +42,14 @@ pub struct AppViewState {
     pub current_dir: String,
     /// 当前目录下的文件列表
     pub file_list: Vec<RemoteFile>,
+    /// 路径提示对应的输入；输入草稿由路径输入框持有。
+    pub file_path_completion_query: String,
+    pub file_path_suggestions: Vec<String>,
     /// 文件传输进度或提示
     pub file_transfer_message: String,
     /// 文件传输进度 0.0~1.0；-1 表示不适用（如正在列目录）
     pub file_transfer_percent: f32,
-    /// 文件列表排序键 (0: 名称 1: 大小 2: 修改时间)
+    /// 文件列表排序键 (0: 名称 1: 大小 2: 修改时间 3: 创建时间)
     pub file_sort_key: i32,
     /// 文件列表排序方向（升序）
     pub file_sort_asc: bool,
@@ -91,6 +94,8 @@ impl Default for AppViewState {
             mirroring_pids: HashMap::new(),
             current_dir: "/sdcard".to_string(),
             file_list: Vec::new(),
+            file_path_completion_query: String::new(),
+            file_path_suggestions: Vec::new(),
             file_transfer_message: String::new(),
             file_transfer_percent: -1.0,
             file_sort_key: 0,

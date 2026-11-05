@@ -14,6 +14,21 @@ pub trait SyncRepository: Send + Sync {
         path: &str,
     ) -> Result<Vec<RemoteFile>, DomainError>;
 
+    /// 只读取直接子目录，用于路径补全。
+    async fn list_subdirectories(
+        &self,
+        serial: &str,
+        path: &str,
+    ) -> Result<Vec<String>, DomainError> {
+        Ok(self
+            .list_directory(serial, path)
+            .await?
+            .into_iter()
+            .filter(|file| file.is_dir)
+            .map(|file| file.path)
+            .collect())
+    }
+
     /// 从远程设备拉取文件到本地计算机 (Pull)
     async fn pull_file(
         &self,

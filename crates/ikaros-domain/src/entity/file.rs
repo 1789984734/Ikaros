@@ -15,6 +15,9 @@ pub struct RemoteFile {
     pub is_symlink: bool,
     /// Linux 权限位描述（如 "drwxr-xr-x"）
     pub permissions: String,
+    /// 真实创建时间戳（秒）；设备或文件系统不支持时为空。
+    #[serde(default)]
+    pub created_time: Option<u64>,
     /// 最后修改时间戳（秒）
     pub modified_time: u64,
 }

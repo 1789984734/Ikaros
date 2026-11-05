@@ -1,0 +1,216 @@
+export component FilePathBar inherits Rectangle {
+    in property <string> current-path;
+    in property <string> device;
+    in property <string> completion-query;
+    in property <[string]> choices;
+    in property <bool> enabled: true;
+    callback edited(string);
+    callback navigate(string);
+    private property <int> selected: -1;
+    private property <bool> dismissed: true;
+    private property <bool> showing: root.enabled && input.has-focus && !root.dismissed
+        && input.preedit-text == "" && root.completion-query == input.text && root.choices.length > 0;
+
+    height: 32px;
+    min-width: 120px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    border-radius: 6px;
+    background: #191b24;
+    border-width: 1px;
+    border-color: input.has-focus ? #4f80ff : #313548;
+    forward-focus: input;
+
+    changed choices => { root.selected = -1; }
+    changed current-path => { root.reset-input(); }
+    changed device => { root.reset-input(); }
+
+    function reset-input() {
+        input.text = root.current-path;
+        input.scroll-x = 0px;
+        root.dismissed = true;
+        root.selected = -1;
+    }
+
+    function fill-completion(index: int) {
+        if index >= 0 && index < root.choices.length {
+            input.text = root.choices[index];
+            input.select-all();
+            input.clear-selection();
+            root.selected = -1;
+            root.dismissed = false;
+            root.edited(input.text);
+            input.focus();
+        }
+    }
+
+    function enter-path() {
+        if root.enabled && input.text != "" {
+            if root.showing && root.selected >= 0 {
+                input.text = root.choices[root.selected];
+            }
+            root.dismissed = true;
+            root.edited("");
+            root.navigate(input.text);
+        }
+    }
+
+    clip-area := Rectangle {
+        x: 10px;
+        width: max(0px, go-button.x - self.x - 6px);
+        height: parent.height;
+        clip: true;
+        Text {
+            width: parent.width;
+            height: parent.height;
+            text: input.text == "" && input.preedit-text == "" ? "输入文件夹路径，回车进入" : "";
+            color: #747e99;
+            font-size: 13px;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+        ContextMenuArea {
+            width: parent.width;
+            height: parent.height;
+            Menu {
+                MenuItem { title: "撤销"; activated => { input.undo(); } }
+                MenuItem { title: "重做"; activated => { input.redo(); } }
+                MenuSeparator { }
+                MenuItem { title: "剪切"; activated => { input.cut(); } }
+                MenuItem { title: "复制"; activated => { input.copy(); } }
+                MenuItem { title: "粘贴"; activated => { input.paste(); } }
+                MenuItem { title: "全选"; activated => { input.select-all(); } }
+            }
+            input := TextInput {
+                private property <length> scroll-x: 0px;
+                x: min(0px, max(clip-area.width - self.width - self.text-cursor-width, self.scroll-x));
+                width: max(clip-area.width - self.text-cursor-width, self.preferred-width);
+                height: parent.height;
+                text: root.current-path;
+                enabled: root.enabled;
+                single-line: true;
+                color: #ffffff;
+                font-size: 13px;
+                vertical-alignment: center;
+                selection-background-color: #3a5285;
+                selection-foreground-color: #ffffff;
+                accessible-label: "文件路径";
+                accessible-placeholder-text: "输入文件夹路径，回车进入，Tab 补全";
+                cursor-position-changed(position) => {
+                    if position.x + self.scroll-x < 0px {
+                        self.scroll-x = -position.x;
+                    } else if position.x + self.scroll-x > clip-area.width - self.text-cursor-width {
+                        self.scroll-x = clip-area.width - position.x - self.text-cursor-width;
+                    }
+                }
+                changed has-focus => {
+                    root.dismissed = !self.has-focus;
+                    root.edited(self.has-focus ? self.text : "");
+                }
+                edited => {
+                    root.dismissed = false;
+                    root.selected = -1;
+                    root.edited(self.text);
+                }
+                key-pressed(event) => {
+                    if self.preedit-text != "" { return reject; }
+                    if event.text == Key.DownArrow && root.showing {
+                        root.selected = mod(root.selected + 1, root.choices.length);
+                        return accept;
+                    }
+                    if event.text == Key.UpArrow && root.showing {
+                        root.selected = root.selected < 0 ? root.choices.length - 1
+                            : mod(root.selected + root.choices.length - 1, root.choices.length);
+                        return accept;
+                    }
+                    if event.text == Key.Tab && root.showing {
+                        root.fill-completion(max(0, root.selected));
+                        return accept;
+                    }
+                    if event.text == Key.Return {
+                        root.enter-path();
+                        return accept;
+                    }
+                    if event.text == Key.Escape {
+                        if root.showing { root.dismissed = true; }
+                        else { root.reset-input(); }
+                        root.edited("");
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+        }
+    }
+
+    go-button := Rectangle {
+        x: parent.width - self.width - 4px;
+        y: 4px;
+        width: 46px;
+        height: parent.height - 8px;
+        border-radius: 4px;
+        background: go-touch.has-hover ? #303b5b : #242b40;
+        accessible-role: button;
+        accessible-label: "前往输入的文件夹";
+        accessible-enabled: root.enabled;
+        accessible-action-default => { root.enter-path(); }
+        Text {
+            text: "前往";
+            color: root.enabled ? #a6bdff : #747e99;
+            font-size: 12px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        go-touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => { root.enter-path(); }
+        }
+    }
+
+    if root.showing: Rectangle {
+        y: root.height + 4px;
+        width: root.width;
+        height: 8px + root.choices.length * 32px + 26px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: #414963;
+        background: #242838;
+        VerticalLayout {
+            padding: 4px;
+            spacing: 0px;
+            for choice[index] in root.choices: Rectangle {
+                height: 32px;
+                border-radius: 4px;
+                background: root.selected == index || choice-touch.has-hover ? #3a4260 : transparent;
+                accessible-role: button;
+                accessible-label: "进入 " + choice;
+                accessible-action-default => { root.selected = index; root.enter-path(); }
+                Text {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    height: parent.height;
+                    text: choice;
+                    color: #d7e1ff;
+                    font-size: 13px;
+                    horizontal-alignment: left;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                choice-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.selected = index; root.enter-path(); }
+                }
+            }
+            Text {
+                height: 26px;
+                text: "↑↓ 选择 · Tab 补全 · Enter 进入 · Esc 收起";
+                color: #818ba5;
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

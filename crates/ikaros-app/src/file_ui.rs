@@ -3,7 +3,7 @@ use crate::{
     App, AppWindow, FileItemData,
 };
 use ikaros_domain::RemoteFile;
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::{path::Path, path::PathBuf, rc::Rc};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -16,6 +16,14 @@ pub fn bind(ui: &AppWindow, tx: UnboundedSender<AppIntent>) {
 }
 
 fn bind_navigation(ui: &AppWindow, tx: UnboundedSender<AppIntent>) {
+    let path_tx = tx.clone();
+    ui.global::<App>().on_browse_directory(move |path| {
+        let _ = path_tx.send(AppIntent::BrowseDirectory(path.to_string()));
+    });
+    let completion_tx = tx.clone();
+    ui.global::<App>().on_complete_file_path(move |query| {
+        let _ = completion_tx.send(AppIntent::CompleteFilePath(query.to_string()));
+    });
     let up_tx = tx.clone();
     ui.global::<App>().on_navigate_up(move || {
         let _ = up_tx.send(AppIntent::NavigateUpDirectory);
@@ -87,32 +95,48 @@ fn bind_download_dir(ui: &AppWindow) {
 
 fn bind_upload(ui: &AppWindow, tx: UnboundedSender<AppIntent>) {
     let handle = ui.as_weak();
+    let file_handle = handle.clone();
+    let file_tx = tx.clone();
     ui.global::<App>().on_upload_file(move |directory| {
+        pick_upload_paths(file_handle.clone(), file_tx.clone(), directory, false);
+    });
+    ui.global::<App>().on_upload_folder(move |directory| {
+        pick_upload_paths(handle.clone(), tx.clone(), directory, true);
+    });
+}
+
+fn pick_upload_paths(
+    handle: slint::Weak<AppWindow>,
+    tx: UnboundedSender<AppIntent>,
+    directory: slint::SharedString,
+    folders: bool,
+) {
+    let Some(ui) = handle.upgrade() else { return };
+    let serial = ui.global::<App>().get_current_serial();
+    let _ = slint::spawn_local(async move {
+        let kind = if folders {
+            "文件夹"
+        } else {
+            "文件（可多选）"
+        };
+        let dialog =
+            rfd::AsyncFileDialog::new().set_title(format!("选择要上传到 {directory} 的{kind}"));
+        let paths = if folders {
+            dialog.pick_folders().await
+        } else {
+            dialog.pick_files().await
+        };
+        let Some(paths) = paths else { return };
         let Some(ui) = handle.upgrade() else { return };
-        let serial = ui.global::<App>().get_current_serial();
-        let handle = handle.clone();
-        let tx = tx.clone();
-        let _ = slint::spawn_local(async move {
-            let file = rfd::AsyncFileDialog::new()
-                .set_title(format!("选择要上传到 {directory} 的文件"))
-                .pick_file()
-                .await;
-            let Some(file) = file else { return };
-            let Some(ui) = handle.upgrade() else { return };
-            if ui.global::<App>().get_current_serial() != serial {
-                return;
-            }
-            let Some(name) = file.path().file_name() else {
-                return;
-            };
-            let _ = tx.send(AppIntent::PushLocalFile {
-                local_path: file.path().to_string_lossy().into_owned(),
-                remote_target: format!(
-                    "{}/{}",
-                    directory.trim_end_matches('/'),
-                    name.to_string_lossy()
-                ),
-            });
+        if ui.global::<App>().get_current_serial() != serial || paths.is_empty() {
+            return;
+        }
+        let _ = tx.send(AppIntent::PushLocalPaths {
+            local_paths: paths
+                .into_iter()
+                .map(|path| path.path().to_owned())
+                .collect(),
+            remote_directory: directory.to_string(),
         });
     });
 }
@@ -125,6 +149,7 @@ fn bind_sort(ui: &AppWindow, tx: UnboundedSender<AppIntent>) {
 }
 
 pub fn apply(ui: &AppWindow, state: &AppViewState) {
+    apply_path_suggestions(ui, state);
     ui.global::<App>()
         .set_current_dir_path(state.current_dir.clone().into());
     ui.global::<App>()
@@ -143,11 +168,35 @@ pub fn apply(ui: &AppWindow, state: &AppViewState) {
             is_dir: file.is_dir,
             size_str: format_size(file.size, file.is_dir).into(),
             permissions: file.permissions.clone().into(),
-            modified_str: format_modified_time(file.modified_time).into(),
+            created_str: format_file_time(file.created_time).into(),
+            modified_str: format_file_time(Some(file.modified_time)).into(),
         })
         .collect();
+    if !ui
+        .global::<App>()
+        .get_file_items()
+        .iter()
+        .eq(items.iter().cloned())
+    {
+        ui.global::<App>()
+            .set_file_items(ModelRc::from(Rc::new(VecModel::from(items))));
+    }
+}
+
+fn apply_path_suggestions(ui: &AppWindow, state: &AppViewState) {
     ui.global::<App>()
-        .set_file_items(ModelRc::from(Rc::new(VecModel::from(items))));
+        .set_file_path_completion_query(state.file_path_completion_query.clone().into());
+    let suggestions: Vec<slint::SharedString> =
+        state.file_path_suggestions.iter().map(Into::into).collect();
+    if !ui
+        .global::<App>()
+        .get_file_path_suggestions()
+        .iter()
+        .eq(suggestions.iter().cloned())
+    {
+        ui.global::<App>()
+            .set_file_path_suggestions(ModelRc::from(Rc::new(VecModel::from(suggestions))));
+    }
 }
 
 /// 目录始终排在文件前面，其余按所选字段与方向比较
@@ -163,6 +212,12 @@ fn compare_files(a: &RemoteFile, b: &RemoteFile, key: i32, asc: bool) -> std::cm
     let ord = match key {
         1 => a.size.cmp(&b.size),
         2 => a.modified_time.cmp(&b.modified_time),
+        3 => match (a.created_time, b.created_time) {
+            (Some(a), Some(b)) => a.cmp(&b),
+            (None, Some(_)) => return Ordering::Greater,
+            (Some(_), None) => return Ordering::Less,
+            (None, None) => Ordering::Equal,
+        },
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     };
     if asc {
@@ -172,16 +227,19 @@ fn compare_files(a: &RemoteFile, b: &RemoteFile, key: i32, asc: bool) -> std::cm
     }
 }
 
-/// epoch 秒转本地时间 "MM-dd HH:mm"；0 表示无效
-fn format_modified_time(secs: u64) -> String {
+/// epoch 秒转本地中文日期时间，保留秒；未知或无效时间显示破折号。
+fn format_file_time(secs: Option<u64>) -> String {
     use chrono::TimeZone;
-    if secs == 0 {
+    let Some(secs) = secs
+        .filter(|&secs| secs > 0)
+        .and_then(|secs| i64::try_from(secs).ok())
+    else {
         return "—".into();
-    }
+    };
     chrono::Local
-        .timestamp_opt(secs as i64, 0)
+        .timestamp_opt(secs, 0)
         .single()
-        .map(|t| t.format("%m-%d %H:%M").to_string())
+        .map(|t| t.format("%Y 年 %-m 月 %-d 日 %H:%M:%S").to_string())
         .unwrap_or_else(|| "—".into())
 }
 
@@ -215,6 +273,7 @@ mod tests {
             is_dir,
             is_symlink: false,
             permissions: "rw-r--r--".into(),
+            created_time: None,
             modified_time: mtime,
         }
     }
@@ -262,5 +321,36 @@ mod tests {
             compare_files(&upper, &lower, 0, true),
             std::cmp::Ordering::Greater
         );
+    }
+
+    #[test]
+    fn file_times_use_the_requested_localized_format_and_preserve_seconds() {
+        use chrono::TimeZone;
+        let time = chrono::Local
+            .with_ymd_and_hms(2026, 11, 5, 17, 11, 8)
+            .single()
+            .unwrap();
+        assert_eq!(
+            format_file_time(Some(time.timestamp() as u64)),
+            "2026 年 11 月 5 日 17:11:08"
+        );
+        for unknown in [None, Some(0), Some(u64::MAX)] {
+            assert_eq!(format_file_time(unknown), "—");
+        }
+    }
+
+    #[test]
+    fn creation_time_sorting_keeps_unknown_values_last_in_both_directions() {
+        let unknown = entry("a.txt", 1, false, 500);
+        let mut early = entry("c.txt", 1, false, 500);
+        early.created_time = Some(100);
+        let mut late = entry("b.txt", 1, false, 1);
+        late.created_time = Some(200);
+        assert!(compare_files(&early, &late, 3, true).is_lt());
+        assert!(compare_files(&early, &late, 3, false).is_gt());
+        for asc in [true, false] {
+            assert!(compare_files(&unknown, &early, 3, asc).is_gt());
+            assert!(compare_files(&late, &unknown, 3, asc).is_lt());
+        }
     }
 }

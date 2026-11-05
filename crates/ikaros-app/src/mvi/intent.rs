@@ -65,8 +65,22 @@ pub enum AppIntent {
     BrowseDirectory(String),
     /// 目录数据加载完成
     DirectoryLoaded {
+        serial: String,
+        generation: u64,
         current_path: String,
         files: Vec<RemoteFile>,
+    },
+    DirectoryLoadFailed {
+        serial: String,
+        generation: u64,
+        message: String,
+    },
+    /// 为路径输入查询目录提示。
+    CompleteFilePath(String),
+    FilePathCompletionsLoaded {
+        serial: String,
+        generation: u64,
+        choices: Vec<String>,
     },
     /// 返回上一级目录
     NavigateUpDirectory,
@@ -77,10 +91,15 @@ pub enum AppIntent {
         remote_path: String,
         local_target: String,
     },
-    /// 推送本地文件到远程
-    PushLocalFile {
-        local_path: String,
-        remote_target: String,
+    /// 将选中的本地文件或文件夹作为一个批次上传到远程目录
+    PushLocalPaths {
+        local_paths: Vec<std::path::PathBuf>,
+        remote_directory: String,
+    },
+    /// 整个上传批次结束（成功、失败或取消）
+    UploadCompleted {
+        serial: String,
+        message: String,
     },
     /// 删除远程文件或目录
     DeleteRemoteFile(String),

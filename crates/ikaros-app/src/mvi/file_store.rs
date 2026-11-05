@@ -9,44 +9,95 @@ impl AppStore {
         if serial == "未连接" {
             return;
         }
+        let path = match ikaros_usecase::file_usecases::normalize_remote_path(
+            &self.state.current_dir,
+            &path,
+        ) {
+            Ok(path) => path,
+            Err(error) => {
+                self.state.status_message = error.to_string();
+                return;
+            }
+        };
+        self.clear_file_path_completions();
+        if let Some(task) = self.file_browse_task.take() {
+            task.abort();
+        }
+        self.file_browse_generation = self.file_browse_generation.wrapping_add(1);
+        let generation = self.file_browse_generation;
 
         self.state.is_busy = true;
-        self.state.file_transfer_message = format!("正在读取目录: {}...", path);
-        self.state.file_transfer_percent = -1.0;
+        if self.file_transfer_cancel.is_none() {
+            self.state.file_transfer_message = format!("正在读取目录: {}...", path);
+            self.state.file_transfer_percent = -1.0;
+        }
 
+        self.start_directory_load(serial, path, generation);
+    }
+
+    fn start_directory_load(&mut self, serial: String, dir_path: String, generation: u64) {
         let usecases = Arc::clone(&self.file_usecases);
         let tx = self.intent_sender.clone();
-        let dir_path = path;
 
-        tokio::spawn(async move {
+        self.file_browse_task = Some(tokio::spawn(async move {
             match usecases.browse_directory(&serial, &dir_path).await {
                 Ok(files) => {
                     let _ = tx.send(AppIntent::DirectoryLoaded {
+                        serial,
+                        generation,
                         current_path: dir_path,
                         files,
                     });
                 }
                 Err(e) => {
                     error!("列出目录失败: {}", e);
-                    let _ = tx.send(AppIntent::SetStatusMessage {
+                    let _ = tx.send(AppIntent::DirectoryLoadFailed {
+                        serial,
+                        generation,
                         message: format!("列出目录失败: {}", e),
-                        is_busy: false,
                     });
                 }
             }
-        });
+        }));
     }
 
     pub(super) fn on_directory_loaded(
         &mut self,
+        serial: String,
+        generation: u64,
         current_path: String,
         files: Vec<ikaros_domain::RemoteFile>,
     ) {
-        self.state.is_busy = false;
+        if serial != self.state.current_serial() || generation != self.file_browse_generation {
+            return;
+        }
+        self.file_browse_task = None;
+        self.clear_file_path_completions();
+        self.state.is_busy = self.file_transfer_cancel.is_some();
         self.state.current_dir = current_path;
-        self.state.file_transfer_message.clear();
-        self.state.file_transfer_percent = -1.0;
+        if self.file_transfer_cancel.is_none() {
+            self.state.file_transfer_message.clear();
+            self.state.file_transfer_percent = -1.0;
+        }
         self.state.file_list = files;
+    }
+
+    pub(super) fn on_directory_load_failed(
+        &mut self,
+        serial: String,
+        generation: u64,
+        message: String,
+    ) {
+        if serial != self.state.current_serial() || generation != self.file_browse_generation {
+            return;
+        }
+        self.file_browse_task = None;
+        self.state.is_busy = self.file_transfer_cancel.is_some();
+        self.state.status_message = message.clone();
+        if self.file_transfer_cancel.is_none() {
+            self.state.file_transfer_message = message;
+            self.state.file_transfer_percent = -1.0;
+        }
     }
 
     pub(super) fn on_enter_directory(&mut self, dir_name: String) {
@@ -128,9 +179,13 @@ impl AppStore {
         });
     }
 
-    pub(super) fn on_push_local_file(&mut self, local_path: String, remote_target: String) {
+    pub(super) fn on_push_local_paths(
+        &mut self,
+        local_paths: Vec<PathBuf>,
+        remote_directory: String,
+    ) {
         let serial = self.state.current_serial();
-        if serial == "未连接" {
+        if serial == "未连接" || local_paths.is_empty() {
             return;
         }
         if self.file_transfer_cancel.is_some() {
@@ -139,53 +194,40 @@ impl AppStore {
         }
 
         self.state.is_busy = true;
-        self.state.file_transfer_message = format!("正在上传至: {}...", remote_target);
+        self.state.file_transfer_message = format!("正在准备上传至: {}...", remote_directory);
         self.state.file_transfer_percent = 0.0;
 
         let usecases = Arc::clone(&self.file_usecases);
         let tx = self.intent_sender.clone();
-        let local_p = PathBuf::from(local_path);
-        let current_dir = self.state.current_dir.clone();
         let cancel = self.begin_transfer();
-
         tokio::spawn(async move {
-            let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel();
-            let tx_prog = tx.clone();
-
-            tokio::spawn(async move {
-                while let Some(prog) = progress_rx.recv().await {
-                    let _ = tx_prog.send(AppIntent::TransferProgressUpdated(prog));
-                }
-            });
-
-            tokio::select! {
-                result = usecases.push_file(&serial, &local_p, &remote_target, Some(progress_tx)) => {
-                    match result {
-                        Ok(_) => {
-                            let _ = tx.send(AppIntent::SetStatusMessage {
-                                message: format!("上传成功: {}", remote_target),
-                                is_busy: false,
-                            });
-                            let _ = tx.send(AppIntent::BrowseDirectory(current_dir));
-                        }
-                        Err(e) => {
-                            error!("上传文件失败: {}", e);
-                            let _ = tx.send(AppIntent::SetStatusMessage {
-                                message: format!("上传失败: {}", e),
-                                is_busy: false,
-                            });
-                        }
-                    }
-                }
-                _ = wait_for_cancel(Arc::clone(&cancel)) => {
-                    let _ = tx.send(AppIntent::SetStatusMessage {
-                        message: format!("已取消上传: {}", remote_target),
-                        is_busy: false,
-                    });
-                }
-            }
-            let _ = tx.send(AppIntent::TransferSettled);
+            let message = upload_local_paths(
+                &usecases,
+                &serial,
+                &local_paths,
+                &remote_directory,
+                &tx,
+                cancel,
+            )
+            .await;
+            let _ = tx.send(AppIntent::UploadCompleted { serial, message });
         });
+    }
+
+    pub(super) fn on_upload_completed(&mut self, serial: String, message: String) {
+        self.on_transfer_settled();
+        if self.state.current_serial() != serial {
+            self.state.file_transfer_message.clear();
+            self.state.file_transfer_percent = -1.0;
+            return;
+        }
+        self.state.is_busy = false;
+        self.state.file_transfer_percent = -1.0;
+        self.state.file_transfer_message = message.clone();
+        self.state.status_message = message;
+        let _ = self
+            .intent_sender
+            .send(AppIntent::BrowseDirectory(self.state.current_dir.clone()));
     }
 
     pub(super) fn on_transfer_progress_updated(&mut self, prog: ikaros_domain::TransferProgress) {
@@ -197,8 +239,10 @@ impl AppStore {
         );
         self.state.file_transfer_percent = if prog.total_bytes > 0 {
             (prog.transferred_bytes as f32 / prog.total_bytes as f32).clamp(0.0, 1.0)
+        } else if prog.is_completed {
+            1.0
         } else {
-            -1.0
+            0.0
         };
     }
 
@@ -327,6 +371,38 @@ impl AppStore {
 
     fn reject_concurrent_transfer(&mut self) {
         self.state.file_transfer_message = "已有传输进行中，可先取消当前传输".into();
+    }
+}
+
+async fn upload_local_paths(
+    usecases: &ikaros_usecase::FileUseCases,
+    serial: &str,
+    local_paths: &[PathBuf],
+    remote_directory: &str,
+    tx: &tokio::sync::mpsc::UnboundedSender<AppIntent>,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+) -> String {
+    let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel();
+    let upload = usecases.push_paths(serial, local_paths, remote_directory, Some(progress_tx));
+    let cancelled = wait_for_cancel(cancel);
+    tokio::pin!(upload, cancelled);
+    loop {
+        tokio::select! {
+            biased;
+            _ = &mut cancelled => return format!("已取消上传: {}", remote_directory),
+            Some(progress) = progress_rx.recv() => {
+                let _ = tx.send(AppIntent::TransferProgressUpdated(progress));
+            }
+            result = &mut upload => {
+                return match result {
+                    Ok(()) => format!("上传成功: {}", remote_directory),
+                    Err(error) => {
+                        error!("上传失败: {}", error);
+                        format!("上传失败: {}", error)
+                    }
+                };
+            }
+        }
     }
 }
 

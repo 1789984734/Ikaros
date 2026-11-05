@@ -159,6 +159,7 @@ impl SyncRepository for AdbClient {
         serial: &str,
         path: &str,
     ) -> Result<Vec<RemoteFile>, DomainError> {
+        self.ensure_directory(serial, path).await?;
         let mut stream = self.open_sync_connection(serial).await?;
         Self::send_sync_request(&mut stream, b"LIST", path.as_bytes()).await?;
 
@@ -210,6 +211,7 @@ impl SyncRepository for AdbClient {
                         is_dir,
                         is_symlink,
                         permissions: format!("{:o}", mode & 0o777),
+                        created_time: None,
                         modified_time: mtime,
                     });
                 }
@@ -229,7 +231,16 @@ impl SyncRepository for AdbClient {
             }
         }
 
+        self.load_creation_times(serial, path, &mut files).await;
         Ok(files)
+    }
+
+    async fn list_subdirectories(
+        &self,
+        serial: &str,
+        path: &str,
+    ) -> Result<Vec<String>, DomainError> {
+        self.read_subdirectories(serial, path).await
     }
 
     /// 从手机拉取文件到本地 (RECV 协议)

@@ -39,11 +39,13 @@ export global App {
     in property <string> scrcpy_help_version;
     in property <string> current_dir_path: "/sdcard";
     in property <[FileItemData]> file_items: [];
+    in property <string> file_path_completion_query;
+    in property <[string]> file_path_suggestions;
     in property <string> file_status_text;
     in property <float> file_transfer_percent: -1.0;
     in property <string> download_dir_text;
     in property <[string]> wireless_history;
-    in property <int> file_sort_key: 0;          // 0: 名称 1: 大小 2: 修改时间
+    in property <int> file_sort_key: 0;          // 0: 名称 1: 大小 2: 修改时间 3: 创建时间
     in property <bool> file_sort_asc: true;
     in-out property <bool> file_input_visible: false;
     in-out property <bool> file_input_is_rename: false;
@@ -104,9 +106,12 @@ export global App {
     callback open_scrcpy_parameter_doc(int);
     callback navigate_up();
     callback refresh_files();
+    callback browse_directory(string);
+    callback complete_file_path(string);
     callback enter_directory(string);
     callback pull_file(string);
     callback upload_file(string);
+    callback upload_folder(string);
     callback confirm_delete_file(string);
     callback rename_file(string, string);
     callback create_directory(string);

@@ -18,8 +18,16 @@ const DISPLAY_LOG_LIMIT: usize = 300;
 mod app_uninstall_tests;
 #[path = "device_store.rs"]
 mod device_store;
+#[path = "file_path_store.rs"]
+mod file_path_store;
+#[cfg(test)]
+#[path = "file_path_tests.rs"]
+mod file_path_tests;
 #[path = "file_store.rs"]
 mod file_store;
+#[cfg(test)]
+#[path = "file_upload_tests.rs"]
+mod file_upload_tests;
 #[path = "logcat_store.rs"]
 mod logcat_store;
 #[path = "mirroring.rs"]
@@ -57,6 +65,10 @@ pub struct AppStore {
     shell_generation: u64,
     /// 进行中文件传输的取消标志；结束后由 TransferSettled 清空，并用于阻止并发传输。
     file_transfer_cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    file_browse_task: Option<tokio::task::JoinHandle<()>>,
+    file_browse_generation: u64,
+    file_completion_task: Option<tokio::task::JoinHandle<()>>,
+    file_completion_generation: u64,
 }
 
 impl AppStore {
@@ -94,6 +106,10 @@ impl AppStore {
             shell_stop_tx: None,
             shell_generation: 0,
             file_transfer_cancel: None,
+            file_browse_task: None,
+            file_browse_generation: 0,
+            file_completion_task: None,
+            file_completion_generation: 0,
         }
     }
 
@@ -159,10 +175,27 @@ impl AppStore {
             // 文件管理
             AppIntent::BrowseDirectory(path) => self.on_browse_directory(path),
             AppIntent::DirectoryLoaded {
+                serial,
+                generation,
                 current_path,
                 files,
             } => {
-                self.on_directory_loaded(current_path, files);
+                self.on_directory_loaded(serial, generation, current_path, files);
+            }
+            AppIntent::DirectoryLoadFailed {
+                serial,
+                generation,
+                message,
+            } => {
+                self.on_directory_load_failed(serial, generation, message);
+            }
+            AppIntent::CompleteFilePath(query) => self.on_complete_file_path(query),
+            AppIntent::FilePathCompletionsLoaded {
+                serial,
+                generation,
+                choices,
+            } => {
+                self.on_file_path_completions_loaded(serial, generation, choices);
             }
             AppIntent::EnterDirectory(dir_name) => self.on_enter_directory(dir_name),
             AppIntent::NavigateUpDirectory => self.on_navigate_up_directory(),
@@ -172,11 +205,14 @@ impl AppStore {
             } => {
                 self.on_pull_remote_file(remote_path, local_target);
             }
-            AppIntent::PushLocalFile {
-                local_path,
-                remote_target,
+            AppIntent::PushLocalPaths {
+                local_paths,
+                remote_directory,
             } => {
-                self.on_push_local_file(local_path, remote_target);
+                self.on_push_local_paths(local_paths, remote_directory);
+            }
+            AppIntent::UploadCompleted { serial, message } => {
+                self.on_upload_completed(serial, message);
             }
             AppIntent::TransferProgressUpdated(prog) => self.on_transfer_progress_updated(prog),
             AppIntent::SetFileSort(key) => self.on_set_file_sort(key),

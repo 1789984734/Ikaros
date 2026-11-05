@@ -48,6 +48,7 @@ impl AppStore {
             let _ = self.intent_sender.send(AppIntent::LoadDeviceDetail(serial));
         }
         if previous_serial != self.state.current_serial() {
+            self.reset_file_navigation();
             self.state.app_list.clear();
             self.reset_performance_device();
         }
@@ -65,6 +66,7 @@ impl AppStore {
             }
             self.state.selected_device_idx = index;
             if changed_device {
+                self.reset_file_navigation();
                 self.reset_performance_device();
             }
             let serial = self.state.devices[index].serial.clone();
