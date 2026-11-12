@@ -77,7 +77,22 @@ pub async fn launch_scrcpy(
 ) -> Result<tokio::process::Child, String> {
     let mut bin = PathBuf::from(&options.binary_path);
     if bin.is_dir() {
-        bin = bin.join("scrcpy");
+        if bin.join("scrcpy.exe").is_file() {
+            bin = bin.join("scrcpy.exe");
+        } else if bin.join("scrcpy").is_file() {
+            bin = bin.join("scrcpy");
+        } else if cfg!(target_os = "windows") {
+            bin = bin.join("scrcpy.exe");
+        } else {
+            bin = bin.join("scrcpy");
+        }
+    } else if !bin.is_file() {
+        if let Some(with_exe) = (!bin.to_string_lossy().ends_with(".exe"))
+            .then(|| bin.with_extension("exe"))
+            .filter(|p| p.is_file())
+        {
+            bin = with_exe;
+        }
     }
     if !bin.is_file() {
         return Err(format!(
@@ -89,9 +104,15 @@ pub async fn launch_scrcpy(
     let mut cmd = tokio::process::Command::new(&bin);
     cmd.args(build_scrcpy_args(serial, options));
     if let Some(dir) = bin.parent().map(Path::to_path_buf) {
-        let bundled_adb = dir.join("adb");
-        if bundled_adb.is_file() {
-            cmd.env("ADB", &bundled_adb);
+        let bundled_adb = if dir.join("adb.exe").is_file() {
+            Some(dir.join("adb.exe"))
+        } else if dir.join("adb").is_file() {
+            Some(dir.join("adb"))
+        } else {
+            None
+        };
+        if let Some(adb) = bundled_adb {
+            cmd.env("ADB", &adb);
         }
     }
     cmd.stdout(Stdio::null()).stderr(Stdio::piped());

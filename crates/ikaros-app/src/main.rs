@@ -1,4 +1,7 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use slint::{Color, ModelRc, VecModel};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
@@ -9,11 +12,15 @@ use ikaros_adb::AdbClient;
 use ikaros_domain::{AppFilterType, LogLevel};
 use ikaros_usecase::{AppUseCases, DeviceUseCases, FileUseCases, LogcatUseCases};
 
+#[cfg(target_os = "macos")]
+mod apk_drag;
 mod app_config;
 #[cfg(test)]
 mod device_ui_tests;
 mod file_ui;
 mod log_filter;
+mod log_json;
+mod log_json_ui;
 mod log_search_ui;
 mod log_selection_ui;
 #[cfg(target_os = "macos")]
@@ -31,24 +38,130 @@ use mvi::{AppIntent, AppStore, AppViewState};
 
 slint::include_modules!();
 
-/// 确保 macOS GUI 环境下的 PATH 包含常见的 adb 及 Android SDK 工具目录
-fn ensure_environment_path() {
-    let mut current_path = std::env::var("PATH").unwrap_or_default();
-    let home = std::env::var("HOME").unwrap_or_default();
-    let candidate_dirs = [
-        format!("{}/Library/Android/sdk/platform-tools", home),
-        format!("{}/.cargo/bin", home),
-        "/opt/homebrew/bin".to_string(),
-        "/usr/local/bin".to_string(),
-        "/usr/bin".to_string(),
-        "/bin".to_string(),
+/// 查找可执行文件同级或资源目录下的内置工具目录 (如 tools/scrcpy, scrcpy, tools 等)
+fn find_bundled_tool_dir() -> Option<PathBuf> {
+    let exe_path = std::env::current_exe().ok()?;
+    let exe_dir = exe_path.parent()?;
+
+    let candidates = [
+        exe_dir.join("tools/scrcpy"),
+        exe_dir.join("scrcpy"),
+        exe_dir.join("tools"),
+        // macOS App Bundle 内 Contents/Resources/tools/scrcpy
+        exe_dir.join("../Resources/tools/scrcpy"),
+        exe_dir.join("../Resources/tools"),
+        exe_dir.to_path_buf(),
     ];
-    for dir in candidate_dirs {
-        if std::path::Path::new(&dir).exists() && !current_path.contains(&dir) {
-            current_path = format!("{}:{}", dir, current_path);
+
+    for candidate in candidates {
+        if candidate.is_dir() {
+            // 只要目录下存在 scrcpy(.exe) 或 adb(.exe)，即认定为工具目录
+            if candidate.join("scrcpy.exe").is_file()
+                || candidate.join("scrcpy").is_file()
+                || candidate.join("adb.exe").is_file()
+                || candidate.join("adb").is_file()
+            {
+                return Some(candidate);
+            }
         }
     }
-    std::env::set_var("PATH", current_path);
+    None
+}
+
+/// 自动探测 scrcpy 可执行路径 (内置目录优先，其次探测系统 PATH)
+fn find_default_scrcpy_path() -> Option<String> {
+    if let Some(tool_dir) = find_bundled_tool_dir() {
+        if tool_dir.join("scrcpy.exe").is_file() {
+            return Some(tool_dir.join("scrcpy.exe").to_string_lossy().to_string());
+        }
+        if tool_dir.join("scrcpy").is_file() {
+            return Some(tool_dir.join("scrcpy").to_string_lossy().to_string());
+        }
+        return Some(tool_dir.to_string_lossy().to_string());
+    }
+
+    // 探测系统 PATH 中是否存在 scrcpy
+    #[cfg(target_os = "windows")]
+    let exe_name = "scrcpy.exe";
+    #[cfg(not(target_os = "windows"))]
+    let exe_name = "scrcpy";
+
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path) {
+            let candidate = dir.join(exe_name);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// 确保 GUI 环境下的 PATH 包含内置工具目录及常见 Android SDK / 系统工具目录
+fn ensure_environment_path() {
+    let current_paths: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+
+    let mut new_paths = Vec::new();
+
+    // 1. 内置工具目录最高优先级（保证自带的 adb/scrcpy 优先被调用，防止版本冲突）
+    if let Some(bundled) = find_bundled_tool_dir() {
+        if !current_paths.contains(&bundled) {
+            new_paths.push(bundled);
+        }
+    }
+
+    // 2. 跨平台探测常见的系统及 SDK 安装目录
+    #[cfg(target_os = "windows")]
+    {
+        let local_app_data = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let user_profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
+        let program_files = std::env::var_os("ProgramFiles").map(PathBuf::from);
+
+        let candidate_dirs = [
+            local_app_data
+                .as_ref()
+                .map(|p| p.join("Android/Sdk/platform-tools")),
+            user_profile
+                .as_ref()
+                .map(|p| p.join("AppData/Local/Android/Sdk/platform-tools")),
+            program_files
+                .as_ref()
+                .map(|p| p.join("Android/platform-tools")),
+        ];
+
+        for dir in candidate_dirs.into_iter().flatten() {
+            if dir.exists() && !current_paths.contains(&dir) && !new_paths.contains(&dir) {
+                new_paths.push(dir);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let candidate_dirs = [
+            format!("{}/Library/Android/sdk/platform-tools", home),
+            format!("{}/.cargo/bin", home),
+            "/opt/homebrew/bin".to_string(),
+            "/usr/local/bin".to_string(),
+            "/usr/bin".to_string(),
+            "/bin".to_string(),
+        ];
+        for dir_str in candidate_dirs {
+            let dir = PathBuf::from(dir_str);
+            if dir.exists() && !current_paths.contains(&dir) && !new_paths.contains(&dir) {
+                new_paths.push(dir);
+            }
+        }
+    }
+
+    // 拼装并注入新的 PATH
+    new_paths.extend(current_paths);
+    if let Ok(joined) = std::env::join_paths(new_paths) {
+        std::env::set_var("PATH", joined);
+    }
 }
 
 #[tokio::main]
@@ -87,12 +200,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _native_menu = macos_menu::init()?;
     let app = AppWindow::new()?;
     #[cfg(target_os = "macos")]
-    macos_window::bind(app.window());
+    macos_window::bind(app.window(), apk_drag::handler(&app, intent_tx.clone()));
     let app_weak = app.as_weak();
-    // 启动时恢复持久化的应用配置（外部 scrcpy 本体路径）
+    // 启动时恢复持久化的应用配置（外部 scrcpy 本体路径），若未配置或失效则自动探测
     {
         let config = app_config::load();
-        if let Some(path) = config.scrcpy_path {
+        let scrcpy_path = config
+            .scrcpy_path
+            .filter(|p| !p.trim().is_empty() && Path::new(p).exists())
+            .or_else(find_default_scrcpy_path);
+        if let Some(path) = scrcpy_path {
             app.global::<App>().set_scrcpy_path(path.into());
         }
     }
@@ -100,6 +217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     file_ui::bind(&app, intent_tx.clone());
     log_search_ui::bind(&app);
     log_selection_ui::bind(&app);
+    log_json_ui::bind(&app);
     scrcpy_ui::bind(&app);
 
     // 5. 绑定 Slint 回调到 MVI Intent 派发通道（实现在 ui_bindings.rs）
@@ -352,6 +470,11 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
     ui.global::<App>().set_is_mirroring(state.is_mirroring());
 
     // 2. 更新设备硬件详情（概览与无线页共享）
+    apply_device_hardware_to_ui(ui, state);
+}
+
+/// 更新选中设备的硬件详情属性（概览与无线页共享）
+pub(crate) fn apply_device_hardware_to_ui(ui: &AppWindow, state: &AppViewState) {
     if let Some(detail) = state
         .selected_device_detail
         .as_ref()
@@ -387,6 +510,13 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
             .set_device_wifi_mac(detail.wifi_mac.as_deref().unwrap_or("无法获取").into());
         ui.global::<App>()
             .set_device_bluetooth_mac(detail.bluetooth_mac.as_deref().unwrap_or("无法获取").into());
+        let build_number = if detail.build_number.is_empty() {
+            "未知"
+        } else {
+            &detail.build_number
+        };
+        ui.global::<App>()
+            .set_device_build_number(build_number.into());
     } else {
         ui.global::<App>().set_device_model("暂无选中设备".into());
         ui.global::<App>().set_device_brand("-".into());
@@ -399,6 +529,7 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
         ui.global::<App>().set_device_wifi_ip("-".into());
         ui.global::<App>().set_device_wifi_mac("-".into());
         ui.global::<App>().set_device_bluetooth_mac("-".into());
+        ui.global::<App>().set_device_build_number("-".into());
     }
 }
 

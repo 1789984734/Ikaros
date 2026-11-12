@@ -239,7 +239,7 @@ fn logcat_ui_interactions_and_live_scrolling() {
     ui.hide().unwrap();
     drop(ui);
     check_live_scrolling(&window);
-    check_live_view_buffering(&window);
+    check_live_view_updates(&window);
 }
 
 fn check_context_menu_position(
@@ -347,8 +347,55 @@ fn check_live_scrolling(window: &MinimalSoftwareWindow) {
         after < bottom,
         "the viewport must move up: {after} vs {bottom}"
     );
+    check_locked_live_updates(&ui, window, &entries);
     check_scrollbar_browsing(&ui, window);
     ui.hide().unwrap();
+}
+
+fn check_locked_live_updates(
+    ui: &scroll_harness::LogScrollHarness,
+    window: &MinimalSoftwareWindow,
+    entries: &VecModel<scroll_harness::LogItemData>,
+) {
+    let reading = entries.row_data(top_row(ui) as usize).unwrap();
+    for batch in 0..3 {
+        let old = entries.iter().collect::<Vec<_>>();
+        let new = old
+            .iter()
+            .skip(5)
+            .cloned()
+            .chain(scroll_rows(20_000 + batch * 5, 20_005 + batch * 5))
+            .collect();
+        update_rows(entries, &old, new);
+        for _ in 0..6 {
+            render(window);
+        }
+        assert!(!ui.get_following());
+        assert_eq!(
+            entries.row_data(top_row(ui) as usize).unwrap(),
+            reading,
+            "new logs must preserve a surviving row at the current reading position"
+        );
+    }
+    for _ in 0..10 {
+        ui.window().dispatch_event(WindowEvent::PointerScrolled {
+            position: slint::LogicalPosition::new(500., 150.),
+            delta_x: 0.,
+            delta_y: -400.,
+        });
+        for _ in 0..8 {
+            render(window);
+        }
+        if row_at(ui, 290.) == entries.row_count() as i32 - 1 {
+            break;
+        }
+    }
+    assert_eq!(
+        row_at(ui, 290.),
+        entries.row_count() as i32 - 1,
+        "scrolling down must reveal appended logs without resuming follow mode"
+    );
+    assert!(!ui.get_following());
 }
 
 fn check_follow_stability(
@@ -431,7 +478,7 @@ fn app_rows(start: usize) -> ModelRc<crate::LogItemData> {
     Rc::new(VecModel::from(rows)).into()
 }
 
-fn check_live_view_buffering(window: &MinimalSoftwareWindow) {
+fn check_live_view_updates(window: &MinimalSoftwareWindow) {
     let ui = AppWindow::new().unwrap();
     bind(&ui);
     ui.global::<App>().set_active_tab(4);
@@ -442,25 +489,25 @@ fn check_live_view_buffering(window: &MinimalSoftwareWindow) {
     ui.global::<App>().set_follow_latest_logs(false);
     ui.global::<App>()
         .invoke_select_log(10, false, false, false);
-    let frozen = ui
-        .global::<App>()
-        .get_log_items()
-        .iter()
-        .collect::<Vec<_>>();
+    ui.global::<App>().invoke_update_log_entries(app_rows(5));
+    render(window);
+    let entries = ui.global::<App>().get_log_items();
+    assert_eq!(entries.row_count(), 300);
+    assert_eq!(entries.row_data(299).unwrap().message, "log 304");
+    assert!(!ui.global::<App>().get_follow_latest_logs());
+    assert!(ui.global::<App>().get_log_selection().row_data(5).unwrap());
+    assert_eq!(ui.global::<App>().get_log_selection_count(), 1);
+    assert!(ui.global::<App>().get_log_updates_pending());
+    ui.global::<App>().invoke_update_log_entries(app_rows(5));
+    assert!(ui.global::<App>().get_log_updates_pending());
     for batch in 1..=20 {
         ui.global::<App>()
             .invoke_update_log_entries(app_rows(batch * 200));
     }
     render(window);
-    assert_eq!(
-        ui.global::<App>()
-            .get_log_items()
-            .iter()
-            .collect::<Vec<_>>(),
-        frozen
-    );
+    assert_eq!(entries.row_data(299).unwrap().message, "log 4299");
     assert!(ui.global::<App>().get_log_updates_pending());
-    assert_eq!(ui.global::<App>().get_log_selection_count(), 1);
+    assert_eq!(ui.global::<App>().get_log_selection_count(), 0);
     ui.global::<App>().set_follow_latest_logs(true);
     render(window);
     assert_eq!(ui.global::<App>().get_log_items().row_count(), 300);
@@ -503,7 +550,11 @@ fn check_filter_and_clear_while_reading(ui: &AppWindow, window: &MinimalSoftware
 }
 
 fn top_row(ui: &scroll_harness::LogScrollHarness) -> i32 {
-    let position = slint::LogicalPosition::new(500., 5.);
+    row_at(ui, 5.)
+}
+
+fn row_at(ui: &scroll_harness::LogScrollHarness, y: f32) -> i32 {
+    let position = slint::LogicalPosition::new(500., y);
     ui.window().dispatch_event(WindowEvent::PointerPressed {
         position,
         button: PointerEventButton::Left,

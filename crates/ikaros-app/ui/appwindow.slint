@@ -6,7 +6,7 @@ export { LogFilterCompletion } from "log-search.slint";
 import { StatusIndicator } from "status.slint";
 import { App } from "app_state.slint";
 export { App }
-export { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData } from "types.slint";
+export { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData, JsonFieldItemData } from "types.slint";
 import { NavItem } from "widgets.slint";
 import { OverviewTab } from "overview_tab.slint";
 import { ScrcpyTab } from "scrcpy_tab.slint";
@@ -15,6 +15,7 @@ import { AppsTab } from "apps_tab.slint";
 import { LogcatTab } from "logcat_tab.slint";
 import { TerminalTab } from "terminal_tab.slint";
 import { SettingsTab } from "settings_tab.slint";
+import { JsonExtractorDialog } from "json-extractor-dialog.slint";
 
 export { ScrcpyParameterInfo } from "scrcpy-parameter-help.slint";
 
@@ -48,19 +49,7 @@ export component AppWindow inherits Window {
     // 快捷工具与导出回调
 
 
-    drop_zone := DropArea {
-        can-drop(event) => {
-            if (App.check_has_apk(event.data)) {
-                return DragAction.copy;
-            }
-            return DragAction.none;
-        }
-        dropped(event) => {
-            App.handle_apk_drop(event.data);
-            return event.proposed-action;
-        }
-
-        HorizontalLayout {
+    HorizontalLayout {
 
         // ========== 1. 侧边栏导航区 ==========
         VerticalLayout {
@@ -264,62 +253,70 @@ export component AppWindow inherits Window {
         }
 
 
-        // 当用户将 APK 文件拖入窗口时展现的全屏反馈覆盖层
-        if drop_zone.has-drag: Rectangle {
-            width: 100%;
-            height: 100%;
-            background: #0f121df0;
-            border-width: 3px;
-            border-color: #4f80ff;
-            border-radius: 8px;
+    }
 
-            VerticalLayout {
-                alignment: center;
-                spacing: 16px;
 
-                Text {
-                    text: "📦";
-                    font-size: 64px;
-                    horizontal-alignment: center;
-                }
+    // 当用户将 APK 文件拖入窗口时展现的全屏反馈覆盖层
+    if App.apk_drag_hover: Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #0f121df0;
+        border-width: 3px;
+        border-color: #4f80ff;
+        border-radius: 8px;
 
-                Text {
-                    text: (App.current_serial != "未连接") ? "释放鼠标以自动安装 APK" : "⚠️ 未检测到有效设备";
-                    font-size: 24px;
-                    font-weight: 700;
-                    color: #ffffff;
-                    horizontal-alignment: center;
-                }
+        VerticalLayout {
+            alignment: center;
+            spacing: 16px;
 
-                Text {
-                    text: (App.current_serial != "未连接") ?
-                        ("目标设备: " + App.device_model + " (" + App.current_serial + ")") :
-                        "请先连接并选择一台 Android 设备";
-                    font-size: 14px;
-                    color: (App.current_serial != "未连接") ? #8a90a6 : #ff6b6b;
-                    horizontal-alignment: center;
-                }
+            Text {
+                text: "📦";
+                font-size: 64px;
+                horizontal-alignment: center;
+            }
 
-                Rectangle {
-                    width: 240px;
-                    height: 36px;
-                    background: #25283a;
-                    border-radius: 18px;
-                    border-width: 1px;
-                    border-color: #4f80ff;
-                    HorizontalLayout {
-                        alignment: center;
-                        Text {
-                            text: "⚡ 极速 ADB Sync 推送 + 静默安装";
-                            font-size: 12px;
-                            color: #4f80ff;
-                            vertical-alignment: center;
-                            horizontal-alignment: center;
-                        }
+            Text {
+                text: (App.current_serial != "未连接") ? "释放鼠标以自动安装 APK" : "⚠️ 未检测到有效设备";
+                font-size: 24px;
+                font-weight: 700;
+                color: #ffffff;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: (App.current_serial != "未连接") ?
+                    ("目标设备: " + App.device_model + " (" + App.current_serial + ")") :
+                    "请先连接并选择一台 Android 设备";
+                font-size: 14px;
+                color: (App.current_serial != "未连接") ? #8a90a6 : #ff6b6b;
+                horizontal-alignment: center;
+            }
+
+            Rectangle {
+                width: 240px;
+                height: 36px;
+                background: #25283a;
+                border-radius: 18px;
+                border-width: 1px;
+                border-color: #4f80ff;
+                HorizontalLayout {
+                    alignment: center;
+                    Text {
+                        text: "⚡ 极速 ADB Sync 推送 + 静默安装";
+                        font-size: 12px;
+                        color: #4f80ff;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
                     }
                 }
             }
         }
     }
-}
+
+    if App.json_extractor_visible: JsonExtractorDialog {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+    }
 }

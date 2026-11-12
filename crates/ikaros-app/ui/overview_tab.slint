@@ -82,6 +82,15 @@ export component OverviewTab inherits VerticalLayout {
                 clicked => { App.copy_clipboard(self.value); }
             }
         }
+        Row {
+            InfoCard {
+                colspan: 3;
+                title: "系统内部版本号";
+                value: App.device_build_number;
+                multiline: true;
+                clicked => { App.copy_clipboard(self.value); }
+            }
+        }
     }
 
     Text {

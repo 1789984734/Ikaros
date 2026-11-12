@@ -318,36 +318,7 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
         });
     }
 
-    // 拖拽 APK 释放安装交互
-    {
-        app.global::<App>().on_check_has_apk(|data| {
-            if let Ok(paths) = data.file_paths() {
-                for path in paths {
-                    if let Some(ext) = path.extension() {
-                        if ext.to_string_lossy().eq_ignore_ascii_case("apk") {
-                            return true;
-                        }
-                    }
-                }
-            }
-            false
-        });
-    }
-
-    {
-        let tx = tx.clone();
-        app.global::<App>().on_handle_apk_drop(move |data| {
-            if let Ok(paths) = data.file_paths() {
-                for path in paths {
-                    if let Some(ext) = path.extension() {
-                        if ext.to_string_lossy().eq_ignore_ascii_case("apk") {
-                            let _ = tx.send(AppIntent::InstallApk(path.to_path_buf()));
-                        }
-                    }
-                }
-            }
-        });
-    }
+    // 拖拽 APK 释放安装交互由 apk_drag 模块直接接入原生窗口事件, 不经过 Slint 回调
 
     // 无线调试
     {

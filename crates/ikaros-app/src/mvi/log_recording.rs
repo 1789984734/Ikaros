@@ -15,6 +15,7 @@ const FILE_PREFIX: &str = "ikaros-logcat-";
 const QUEUED_BATCH_LIMIT: usize = 8;
 
 pub(crate) fn default_directory() -> PathBuf {
+    #[cfg(not(target_os = "windows"))]
     let home = std::env::var_os("HOME").map(PathBuf::from);
     #[cfg(target_os = "macos")]
     let base = home.map(|home| home.join("Library/Logs"));

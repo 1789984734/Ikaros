@@ -115,8 +115,7 @@ fn bind_entries(
     selection: Rc<RefCell<Selection>>,
     entries: Rc<VecModel<LogItemData>>,
 ) {
-    let pending = Rc::new(RefCell::new(None));
-    bind_follow(ui, pending.clone());
+    bind_follow(ui);
     let weak = ui.as_weak();
     let mut context = log_context(ui);
     ui.global::<App>().on_update_log_entries(move |new| {
@@ -127,19 +126,14 @@ fn bind_entries(
         let reset = next_context != context || new.is_empty();
         context = next_context;
         if reset {
-            pending.borrow_mut().take();
             ui.global::<App>().set_follow_latest_logs(true);
+            ui.global::<App>().set_log_updates_pending(false);
         }
-        if !ui.global::<App>().get_follow_latest_logs() && old != new {
-            *pending.borrow_mut() = Some(new);
-            ui.global::<App>().set_log_updates_pending(true);
-            return;
-        }
-        pending.borrow_mut().take();
-        ui.global::<App>().set_log_updates_pending(false);
         if old == new {
             return;
         }
+        ui.global::<App>()
+            .set_log_updates_pending(!ui.global::<App>().get_follow_latest_logs());
         let mut selection = selection.borrow_mut();
         selection.reconcile(&old, &new);
         update_rows(&entries, &old, new);
@@ -155,18 +149,14 @@ fn log_context(ui: &AppWindow) -> (slint::SharedString, slint::SharedString, i32
     )
 }
 
-fn bind_follow(ui: &AppWindow, pending: Rc<RefCell<Option<Vec<LogItemData>>>>) {
+fn bind_follow(ui: &AppWindow) {
     let weak = ui.as_weak();
     ui.global::<App>().on_log_follow_changed(move |following| {
         if !following {
             return;
         }
         let Some(ui) = weak.upgrade() else { return };
-        let latest = pending.borrow_mut().take();
-        if let Some(latest) = latest {
-            ui.global::<App>()
-                .invoke_update_log_entries(ModelRc::from(Rc::new(VecModel::from(latest))));
-        }
+        ui.global::<App>().set_log_updates_pending(false);
     });
 }
 

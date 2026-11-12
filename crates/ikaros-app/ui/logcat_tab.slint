@@ -77,6 +77,7 @@ export component LogcatTab inherits VerticalLayout {
                 show-package: App.log_show_package;
                 show-level: App.log_level_selected == 0;
                 show-tag: App.log_show_tag;
+                scroll-enabled: !App.json_extractor_visible;
                 add-filter(field, value) => { App.add_log_filter(field, value); }
                 select(index, shift, additive, context) => { App.select_log(index, shift, additive, context); }
                 drag-select(index) => { App.drag_select_log(index); }
@@ -86,6 +87,8 @@ export component LogcatTab inherits VerticalLayout {
                 wrap-lines: App.log_word_wrap;
                 follow-latest <=> App.follow_latest_logs;
                 copy(text) => { App.copy_clipboard(text); }
+                open-json-extractor(text) => { App.open_json_extractor(text); }
+                copy-pretty-json(text) => { App.copy_pretty_json(text); }
             }
         }
     }

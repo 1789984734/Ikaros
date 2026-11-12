@@ -87,12 +87,15 @@ export component ToolbarIconButton inherits Rectangle {
 export component InfoCard inherits Rectangle {
     in property <string> title: "";
     in property <string> value: "";
+    in property <bool> multiline: false;
     callback clicked();
 
     property <bool> just_copied: false;
 
-    // 固定等宽拉伸，确保 4 列宽度严格均等
+    // 固定等宽拉伸，确保宽度严格按约束均等，避免长文本内容撑大列宽
     horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 0px;
 
     background: touch.has-hover ? #2d3246 : #232737;
     border-radius: 8px;
@@ -120,6 +123,7 @@ export component InfoCard inherits Rectangle {
                 color: #8a90a6;
                 vertical-alignment: center;
                 overflow: elide;
+                min-width: 0px;
             }
 
             Rectangle { }
@@ -138,10 +142,12 @@ export component InfoCard inherits Rectangle {
 
         Text {
             text: root.value;
-            font-size: 15px;
+            font-size: root.multiline ? 13px : 15px;
             font-weight: 600;
             color: #ffffff;
-            overflow: elide;
+            wrap: root.multiline ? word-wrap : no-wrap;
+            overflow: root.multiline ? clip : elide;
+            min-width: 0px;
         }
     }
 }

@@ -38,9 +38,14 @@ impl AdbClient {
         }
 
         // 尝试自动唤起后台 ADB 守护服务
-        let _ = std::process::Command::new("adb")
-            .arg("start-server")
-            .output();
+        let mut cmd = std::process::Command::new("adb");
+        cmd.arg("start-server");
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW: 避免 Windows 下弹出命令行黑框
+        }
+        let _ = cmd.output();
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         match timeout(Duration::from_secs(3), TcpStream::connect(self.server_addr)).await {
@@ -447,6 +452,10 @@ impl DeviceRepository for AdbClient {
         let android_version = prop("ro.build.version.release");
         let sdk_api_level = prop("ro.build.version.sdk").parse::<u32>().unwrap_or(0);
         let cpu_abi = prop("ro.product.cpu.abi");
+        let mut build_number = prop("ro.build.display.id");
+        if build_number.is_empty() {
+            build_number = prop("ro.build.id");
+        }
 
         // 获取屏幕物理分辨率 (wm size)
         let wm_size = self
@@ -512,6 +521,7 @@ impl DeviceRepository for AdbClient {
             wifi_ip: network.wifi_ip,
             wifi_mac: network.wifi_mac,
             bluetooth_mac: network.bluetooth_mac,
+            build_number,
         })
     }
 
@@ -575,5 +585,47 @@ impl DeviceRepository for AdbClient {
 
     async fn enable_tcpip(&self, serial: &str, port: u16) -> Result<String, DomainError> {
         self.enable_tcpip_raw(serial, port).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_getprop_reads_properties_and_resolves_build_number() {
+        let sample = "\
+[ro.product.brand]: [Google]
+[ro.product.model]: [Pixel 8 Pro]
+[ro.build.version.release]: [14]
+[ro.build.version.sdk]: [34]
+[ro.build.display.id]: [UQ1A.240205.004]
+[ro.build.id]: [UQ1A.240205.002]
+";
+        let map = AdbClient::parse_getprop(sample);
+        assert_eq!(
+            map.get("ro.product.brand").map(|s| s.as_str()),
+            Some("Google")
+        );
+        let mut build_number = map.get("ro.build.display.id").cloned().unwrap_or_default();
+        if build_number.is_empty() {
+            build_number = map.get("ro.build.id").cloned().unwrap_or_default();
+        }
+        assert_eq!(build_number, "UQ1A.240205.004");
+
+        // 当 ro.build.display.id 为空时回退到 ro.build.id
+        let fallback_sample = "\
+[ro.build.display.id]: []
+[ro.build.id]: [AP2A.240805.005]
+";
+        let map_fallback = AdbClient::parse_getprop(fallback_sample);
+        let mut build_number_fallback = map_fallback
+            .get("ro.build.display.id")
+            .cloned()
+            .unwrap_or_default();
+        if build_number_fallback.is_empty() {
+            build_number_fallback = map_fallback.get("ro.build.id").cloned().unwrap_or_default();
+        }
+        assert_eq!(build_number_fallback, "AP2A.240805.005");
     }
 }

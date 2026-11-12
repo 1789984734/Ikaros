@@ -156,6 +156,7 @@ pub enum AppIntent {
         package_name: String,
     },
     /// 安装本地 APK 文件（例如拖拽 APK 释放安装）
+    #[allow(dead_code)]
     InstallApk(std::path::PathBuf),
 
     // ========== 无线调试交互意图 ==========

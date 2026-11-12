@@ -3,15 +3,21 @@ use objc2_app_kit::NSView;
 use objc2_foundation::NSString;
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-pub fn bind(window: &slint::Window) {
+/// winit 每个窗口只允许注册一个事件过滤器，所以原生窗口事件在这里集中分发。
+/// `on_event` 负责业务侧的拖放等事件，本函数自身只处理窗口位置的恢复与保存。
+pub fn bind(
+    window: &slint::Window,
+    mut on_event: impl FnMut(&winit::event::WindowEvent) + 'static,
+) {
     let mut initialized = false;
     // Slint creates the native window only after its event loop starts.
-    window.on_winit_window_event(move |window, _| {
+    window.on_winit_window_event(move |window, event| {
         if !initialized {
             initialized = window
                 .with_winit_window(restore_and_autosave)
                 .unwrap_or(false);
         }
+        on_event(event);
         EventResult::Propagate
     });
 }

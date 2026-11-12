@@ -102,7 +102,7 @@ fi
 
 # 8. 清理编译缓存，仅保留最新应用产物
 echo "🧹 清理 Cargo 编译缓存..."
-cargo clean --manifest-path "$ROOT_DIR/Cargo.toml" --target-dir "$ROOT_DIR/target"
+cargo clean --manifest-path "$ROOT_DIR/Cargo.toml"
 
 echo "=================================================="
 echo "✅ 打包完成！"

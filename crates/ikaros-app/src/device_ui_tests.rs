@@ -80,4 +80,48 @@ fn device_context_menu_copies_the_clicked_serial_without_switching_devices() {
     assert_eq!(*copied.borrow(), ["192.0.2.10:5555", "USB-SERIAL-123"]);
     assert_eq!(selected.get(), 1);
     assert_eq!(ui.global::<App>().get_selected_device_index(), 1);
+
+    // 验证硬件信息及系统内部版本号的投影
+    let mut state = crate::mvi::state::AppViewState::default();
+    crate::apply_device_hardware_to_ui(&ui, &state);
+    assert_eq!(ui.global::<App>().get_device_build_number(), "-");
+
+    state.devices.push(ikaros_domain::Device {
+        serial: "USB-SERIAL-123".into(),
+        status: ikaros_domain::DeviceStatus::Device,
+        product: None,
+        model: Some("Pixel 8 Pro".into()),
+        device: None,
+        transport_id: None,
+    });
+    state.selected_device_idx = 0;
+    state.selected_device_detail = Some(ikaros_domain::DeviceDetail {
+        serial: "USB-SERIAL-123".into(),
+        brand: "Google".into(),
+        model: "Pixel 8 Pro".into(),
+        android_version: "14".into(),
+        sdk_api_level: 34,
+        cpu_abi: "arm64-v8a".into(),
+        screen_resolution: "1344x2992".into(),
+        screen_density: 480,
+        battery_level: Some(85),
+        imei: Some("860000000000001".into()),
+        wifi_ip: Some("192.168.1.100".into()),
+        wifi_mac: Some("02:00:00:00:00:00".into()),
+        bluetooth_mac: Some("02:00:00:00:00:01".into()),
+        build_number: "UQ1A.240205.004".into(),
+    });
+    crate::apply_device_hardware_to_ui(&ui, &state);
+    assert_eq!(
+        ui.global::<App>().get_device_build_number(),
+        "UQ1A.240205.004"
+    );
+    assert_eq!(ui.global::<App>().get_device_android_version(), "14");
+
+    // 验证空内部版本号回退为“未知”
+    if let Some(detail) = state.selected_device_detail.as_mut() {
+        detail.build_number = String::new();
+    }
+    crate::apply_device_hardware_to_ui(&ui, &state);
+    assert_eq!(ui.global::<App>().get_device_build_number(), "未知");
 }

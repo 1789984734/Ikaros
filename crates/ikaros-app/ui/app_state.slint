@@ -1,5 +1,5 @@
 // 应用全局状态（SSOT）：Rust MVI Store ↔ 各页组件共用的唯一数据通道
-import { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData } from "types.slint";
+import { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData, JsonFieldItemData } from "types.slint";
 import { LogItemData } from "logcat.slint";
 import { PerformanceMetric, PerformanceChart } from "performance.slint";
 import { LogFilterCompletion } from "log-search.slint";
@@ -20,13 +20,14 @@ export global App {
     in property <string> device_wifi_ip: "无法获取";
     in property <string> device_wifi_mac: "无法获取";
     in property <string> device_bluetooth_mac: "无法获取";
+    in property <string> device_build_number: "未知";
     in property <bool> is_busy: false;
     in property <string> status_message: "就绪";
     in property <string> shell_output: "";
     in property <bool> is_shell_busy: false;
     in-out property <string> shell_input_text: "";
     in property <bool> is_mirroring: false;
-    in-out property <string> scrcpy_path: "/Users/android-02/Downloads/scrcpy/scrcpy";
+    in-out property <string> scrcpy_path: "";
     in-out property <int> scrcpy_max_size: 0;  // 0: 不限制
     in-out property <int> scrcpy_max_fps: 2;   // 默认 60
     in-out property <int> scrcpy_bit_rate: 2;  // 默认 8M
@@ -47,6 +48,11 @@ export global App {
     in property <[string]> wireless_history;
     in property <int> file_sort_key: 0;          // 0: 名称 1: 大小 2: 修改时间 3: 创建时间
     in property <bool> file_sort_asc: true;
+    in-out property <bool> json_extractor_visible: false;
+    in-out property <string> json_extractor_search: "";
+    in-out property <string> json_extractor_raw_pretty: "";
+    in-out property <[JsonFieldItemData]> json_extractor_fields: [];
+    in-out property <int> json_extractor_total_count: 0;
     in-out property <bool> file_input_visible: false;
     in-out property <bool> file_input_is_rename: false;
     in-out property <string> file_input_target_path: "";
@@ -59,6 +65,8 @@ export global App {
     in-out property <int> app_filter_tab: 0; // 0: 全部, 1: 系统, 2: 第三方
     in property <string> app_search_query;
     in property <string> app_status_text: "就绪";
+    // 原生文件拖拽悬停反馈：由 Rust 侧 apk_drag 模块依据窗口拖放事件写入
+    in-out property <bool> apk_drag_hover: false;
     in property <[LogItemData]> log_items: [];
     in property <[bool]> log_selection;
     in property <int> log_selection_count;
@@ -153,8 +161,10 @@ export global App {
     callback search_logs(string);
     callback add_log_filter(string, string);
     pure callback complete_log_filter(string, int) -> [LogFilterCompletion];
-    pure callback check_has_apk(data-transfer) -> bool;
-    callback handle_apk_drop(data-transfer);
     callback copy_clipboard(string);
     callback scrcpy_path_changed();
+    callback open_json_extractor(string);
+    callback search_json_fields(string);
+    callback close_json_extractor();
+    callback copy_pretty_json(string);
 }

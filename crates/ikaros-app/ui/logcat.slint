@@ -19,6 +19,7 @@ component LogRow inherits Rectangle {
     in property <length> view-width;
     in property <bool> selected;
     in property <int> selection-count;
+    in property <bool> scroll-enabled: true;
     in property <bool> dragging;
     in property <length> drag-y;
     private property <bool> drag-target: root.dragging
@@ -32,6 +33,8 @@ component LogRow inherits Rectangle {
     callback copy-selected(bool);
     callback browse();
     callback add-filter(string, string);
+    callback open-json-extractor(string);
+    callback copy-pretty-json(string);
     private property <string> context-field;
     private property <string> context-value;
 
@@ -81,6 +84,7 @@ component LogRow inherits Rectangle {
             if self.pressed { root.drag-to(self.absolute-position.y + self.mouse-y); }
         }
         scroll-event(event) => {
+            if !root.scroll-enabled { return accept; }
             // Suspend follow before the wheel starts moving the viewport.
             if event.delta-y != 0px { root.browse(); }
             return reject;
@@ -117,6 +121,15 @@ component LogRow inherits Rectangle {
                         + " " + root.entry.level + " " + root.entry.tag
                         + ": " + root.entry.message);
                 }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: "提取 JSON 键值对...";
+                activated => { root.open-json-extractor(root.entry.message); }
+            }
+            MenuItem {
+                title: "复制格式化 JSON";
+                activated => { root.copy-pretty-json(root.entry.message); }
             }
             if root.context-field != "" && root.context-value != "": MenuSeparator { }
             if root.context-field != "" && root.context-value != "": MenuItem {
@@ -231,6 +244,7 @@ export component LogcatView inherits FocusScope {
     in property <bool> show-tag: true;
     in property <[bool]> selection;
     in property <int> selection-count;
+    in property <bool> scroll-enabled: true;
     callback copy(string);
     callback select(int, bool, bool, bool);
     callback drag-select(int);
@@ -238,6 +252,8 @@ export component LogcatView inherits FocusScope {
     callback select-all();
     callback clear-selection();
     callback add-filter(string, string);
+    callback open-json-extractor(string);
+    callback copy-pretty-json(string);
     private property <bool> dragging: false;
     private property <length> drag-y: -1px;
     in property <bool> wrap-lines: false;
@@ -308,6 +324,7 @@ export component LogcatView inherits FocusScope {
             show-tag: root.show-tag;
             selected: root.selection[index];
             selection-count: root.selection-count;
+            scroll-enabled: root.scroll-enabled;
             dragging: root.dragging;
             drag-y: root.drag-y < 0px ? -1px : max(root.absolute-position.y,
                 min(root.absolute-position.y + list.visible-height - 1px, root.drag-y));
@@ -315,6 +332,8 @@ export component LogcatView inherits FocusScope {
             view-width: list.visible-width;
             copy(text) => { root.copy(text); }
             copy-selected(contents-only) => { root.copy-selected(contents-only); }
+            open-json-extractor(text) => { root.open-json-extractor(text); }
+            copy-pretty-json(text) => { root.copy-pretty-json(text); }
             add-filter(field, value) => { root.add-filter(field, value); }
             browse => { root.follow-latest = false; }
             select(shift, additive, context) => {

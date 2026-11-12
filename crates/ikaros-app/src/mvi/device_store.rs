@@ -114,8 +114,8 @@ impl AppStore {
         self.state.is_busy = false;
 
         self.state.shell_output.push_str(&format!(
-            "=== 设备 [{}] 详情已就绪 ===\n品牌: {}\n型号: {}\n系统版本: Android {} (API {})\n架构: {}\n分辨率: {}\n电量: {:?}%\n\n",
-            detail.serial, detail.brand, detail.model, detail.android_version, detail.sdk_api_level, detail.cpu_abi, detail.screen_resolution, detail.battery_level
+            "=== 设备 [{}] 详情已就绪 ===\n品牌: {}\n型号: {}\n系统版本: Android {} (API {})\n内部版本号: {}\n架构: {}\n分辨率: {}\n电量: {:?}%\n\n",
+            detail.serial, detail.brand, detail.model, detail.android_version, detail.sdk_api_level, detail.build_number, detail.cpu_abi, detail.screen_resolution, detail.battery_level
         ));
 
         self.state.selected_device_detail = Some(detail);

@@ -1,0 +1,430 @@
+import { Button, LineEdit, ListView, ScrollView } from "std-widgets.slint";
+import { App } from "app_state.slint";
+import { JsonFieldItemData } from "types.slint";
+
+export component JsonExtractorDialog inherits Rectangle {
+    in-out property <int> selected_index: 0;
+
+    private property <JsonFieldItemData> current_item: root.selected_index >= 0 && root.selected_index < App.json_extractor_fields.length ?
+        App.json_extractor_fields[root.selected_index] : { path: "", value: "", formatted_value: "", value_type: "" };
+
+    // 遮罩层铺满父容器
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    background: #000000a6;
+
+    // 点击遮罩空白区域关闭弹窗，并拦截遮罩层上的滚轮事件防止穿透到底层
+    TouchArea {
+        clicked => { App.close_json_extractor(); }
+        scroll-event(event) => { return accept; }
+    }
+
+    // 居中弹窗主体
+    dialog := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(920px, parent.width - 40px);
+        height: min(680px, parent.height - 40px);
+        background: #1c202c;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: #3b4259;
+        clip: true;
+
+        // 拦截点击与未消费的滚轮事件，防止点击弹窗内部时触发遮罩关闭或滚轮穿透
+        TouchArea {
+            scroll-event(event) => { return accept; }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+
+            // 头部标题栏
+            HorizontalLayout {
+                height: 32px;
+                spacing: 10px;
+
+                Text {
+                    text: "JSON 键值对提取";
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "（共 " + App.json_extractor_total_count + " 项）";
+                    font-size: 13px;
+                    color: #8b92b0;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { }
+
+                Button {
+                    text: "复制完整美化 JSON";
+                    clicked => {
+                        App.copy_clipboard(App.json_extractor_raw_pretty);
+                    }
+                }
+
+                // 优雅的 SVG 关闭图标按钮
+                close_btn := Rectangle {
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 6px;
+                    background: close_touch.has-hover ? #33394d : transparent;
+                    animate background { duration: 120ms; }
+
+                    Image {
+                        width: 14px;
+                        height: 14px;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        source: @image-url("icons/close.svg");
+                        colorize: close_touch.has-hover ? #ff7b7b : #9097b2;
+                        animate colorize { duration: 120ms; }
+                    }
+
+                    close_touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { App.close_json_extractor(); }
+                    }
+                }
+            }
+
+            // 搜索过滤栏
+            HorizontalLayout {
+                height: 34px;
+                spacing: 10px;
+
+                search_input := LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "搜索键名路径或值 (如 data.qrCode, requestId)...";
+                    text: App.json_extractor_search;
+                    edited(query) => {
+                        App.json_extractor_search = query;
+                        root.selected_index = 0;
+                        App.search_json_fields(query);
+                    }
+                }
+
+                if search_input.text != "": Button {
+                    width: 60px;
+                    text: "清空";
+                    clicked => {
+                        search_input.text = "";
+                        App.json_extractor_search = "";
+                        root.selected_index = 0;
+                        App.search_json_fields("");
+                    }
+                }
+            }
+
+            // 表头栏
+            Rectangle {
+                height: 28px;
+                background: #151722;
+                border-radius: 4px;
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 10px;
+
+                    Text {
+                        width: 250px;
+                        text: "键名路径 (Key Path)";
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #8b92b0;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        width: 70px;
+                        text: "类型";
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #8b92b0;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: "值 (Value)";
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #8b92b0;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        width: 140px;
+                        text: "操作";
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: #8b92b0;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // 上半部分：字段列表表格
+            Rectangle {
+                horizontal-stretch: 1;
+                vertical-stretch: 1;
+                min-height: 180px;
+                background: #141622;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: #2b2e40;
+                clip: true;
+
+                if App.json_extractor_fields.length == 0: Rectangle {
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+
+                        Text {
+                            text: App.json_extractor_total_count == 0 ? "未解析到有效键值对" : "无匹配搜索结果";
+                            font-size: 14px;
+                            color: #6d748f;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                if App.json_extractor_fields.length > 0: ListView {
+                    for item[idx] in App.json_extractor_fields: Rectangle {
+                        height: 36px;
+                        background: root.selected_index == idx ? #232c42 : (row_touch.has-hover ? #1c2133 : (Math.mod(idx, 2) == 0 ? #141622 : #171926));
+                        animate background { duration: 100ms; }
+
+                        row_touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.selected_index = idx; }
+                        }
+
+                        // 选中聚焦蓝条
+                        if root.selected_index == idx: Rectangle {
+                            x: 0px;
+                            y: 4px;
+                            width: 3px;
+                            height: parent.height - 8px;
+                            border-radius: 2px;
+                            background: #4f80ff;
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 10px;
+
+                            // 键名
+                            Text {
+                                width: 250px;
+                                text: item.path;
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: root.selected_index == idx ? #ffffff : #9cdcfe;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+
+                            // 类型徽章
+                            Rectangle {
+                                width: 70px;
+                                height: 20px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: 4px;
+                                background: item.value_type == "string" ? #3c3228 :
+                                            item.value_type == "number" ? #23382c :
+                                            item.value_type == "boolean" ? #1f334a :
+                                            item.value_type == "object" ? #392842 : #282a36;
+
+                                Text {
+                                    text: item.value_type;
+                                    font-size: 11px;
+                                    color: item.value_type == "string" ? #ce9178 :
+                                           item.value_type == "number" ? #b5cea8 :
+                                           item.value_type == "boolean" ? #4fc1ff :
+                                           item.value_type == "object" ? #c586c0 : #a0a0a0;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            // 值（单行截断概览）
+                            Text {
+                                horizontal-stretch: 1;
+                                text: item.value;
+                                font-size: 12px;
+                                color: root.selected_index == idx ? #ffffff : #cdd4e0;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+
+                            // 操作按钮
+                            HorizontalLayout {
+                                width: 140px;
+                                spacing: 6px;
+                                alignment: center;
+
+                                Button {
+                                    width: 65px;
+                                    text: "复制值";
+                                    clicked => {
+                                        root.selected_index = idx;
+                                        App.copy_clipboard(item.formatted_value);
+                                    }
+                                }
+
+                                Button {
+                                    width: 65px;
+                                    text: "复制键";
+                                    clicked => {
+                                        root.selected_index = idx;
+                                        App.copy_clipboard(item.path);
+                                    }
+                                }
+                            }
+                        }
+
+                        // 行底部分割线
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: #1f2334;
+                        }
+                    }
+                }
+            }
+
+            // 下半部分：选中字段详情预览面板（Detail Card）
+            detail_card := Rectangle {
+                height: 160px;
+                background: #12141c;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #2e3347;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+
+                    // 详情面板头部
+                    HorizontalLayout {
+                        height: 26px;
+                        spacing: 8px;
+
+                        Text {
+                            text: "字段详情:";
+                            font-size: 12px;
+                            color: #7b829c;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.current_item.path != "" ? root.current_item.path : "未选择";
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: #4f80ff;
+                            vertical-alignment: center;
+                        }
+
+                        if root.current_item.value_type != "": Rectangle {
+                            width: 60px;
+                            height: 18px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 3px;
+                            background: #252838;
+
+                            Text {
+                                text: root.current_item.value_type;
+                                font-size: 10px;
+                                color: #9aa1b8;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Rectangle { }
+
+                        if root.current_item.formatted_value != "": Button {
+                            text: "复制完整值";
+                            clicked => {
+                                App.copy_clipboard(root.current_item.formatted_value);
+                            }
+                        }
+
+                        if root.current_item.path != "": Button {
+                            text: "复制键名";
+                            clicked => {
+                                App.copy_clipboard(root.current_item.path);
+                            }
+                        }
+                    }
+
+                    // 详情多行文本内容展示区（支持自动换行与纵向滚动）
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        vertical-stretch: 1;
+                        background: #0d0e15;
+                        border-radius: 5px;
+                        border-width: 1px;
+                        border-color: #1f2230;
+                        clip: true;
+
+                        if root.current_item.formatted_value == "": VerticalLayout {
+                            alignment: center;
+                            Text {
+                                text: "请选择上方列表中的任意行查看完整内容";
+                                font-size: 12px;
+                                color: #585e75;
+                                horizontal-alignment: center;
+                            }
+                        }
+
+                        if root.current_item.formatted_value != "": ScrollView {
+                            VerticalLayout {
+                                padding: 8px;
+                                Text {
+                                    text: root.current_item.formatted_value;
+                                    font-size: 12px;
+                                    color: #00d26a;
+                                    font-family: "monospace";
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 底部提示与关闭按钮
+            HorizontalLayout {
+                height: 30px;
+                spacing: 12px;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "💡 提示：点击列表任意行可在下方预览面板查看完整内容；「复制完整值」可直接复制格式化数据";
+                    font-size: 12px;
+                    color: #7b829c;
+                    vertical-alignment: center;
+                }
+
+                Button {
+                    width: 80px;
+                    text: "关闭";
+                    clicked => { App.close_json_extractor(); }
+                }
+            }
+        }
+    }
+}

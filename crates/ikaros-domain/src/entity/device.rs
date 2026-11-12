@@ -79,4 +79,7 @@ pub struct DeviceDetail {
     /// 本机蓝牙适配器的 MAC 地址
     #[serde(default)]
     pub bluetooth_mac: Option<String>,
+    /// 系统内部编译版本号 (如 "UP1A.231005.007")
+    #[serde(default)]
+    pub build_number: String,
 }
