@@ -1,6 +1,6 @@
 import { Button, ComboBox, LineEdit } from "std-widgets.slint";
 import { App } from "app_state.slint";
-import { InfoCard } from "widgets.slint";
+import { CopyText, InfoCard } from "widgets.slint";
 
 export component OverviewTab inherits VerticalLayout {
     spacing: 16px;
@@ -59,10 +59,32 @@ export component OverviewTab inherits VerticalLayout {
                 value: App.current_serial;
                 clicked => { App.copy_clipboard(self.value); }
             }
-            InfoCard {
+            imei-card := InfoCard {
                 title: "设备识别码 (IMEI)";
                 value: App.device_imei;
+                show_value: App.device_imei2 == "";
+                compact: !self.show_value;
                 clicked => { App.copy_clipboard(self.value); }
+
+                if !imei-card.show_value: VerticalLayout {
+                    for entry in [{label: "IMEI1", value: App.device_imei}, {label: "IMEI2", value: App.device_imei2}]: CopyText {
+                        text: entry.label + " " + entry.value;
+                        enabled: entry.value != "未知";
+                        idle_color: self.enabled ? #a9c4ff : #8a90a6;
+                        font-size: 13px;
+                        font-weight: 600;
+                        wrap: word-wrap;
+                        overflow: clip;
+                        min-width: 0px;
+                        accessible-role: button;
+                        accessible-enabled: self.enabled;
+                        accessible-label: "复制 " + self.text;
+                        accessible-action-default => {
+                            if self.enabled { self.copy(); }
+                        }
+                        copy => { App.copy_clipboard(entry.value); }
+                    }
+                }
             }
         }
         Row {

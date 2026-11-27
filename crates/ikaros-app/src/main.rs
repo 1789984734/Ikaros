@@ -499,6 +499,8 @@ pub(crate) fn apply_device_hardware_to_ui(ui: &AppWindow, state: &AppViewState) 
         ui.global::<App>().set_device_battery(battery_str.into());
         let imei_str = detail.imei.as_deref().unwrap_or("未知");
         ui.global::<App>().set_device_imei(imei_str.into());
+        ui.global::<App>()
+            .set_device_imei2(detail.imei2.as_deref().unwrap_or_default().into());
         ui.global::<App>().set_device_wifi_ip(
             detail
                 .wifi_ip
@@ -526,6 +528,7 @@ pub(crate) fn apply_device_hardware_to_ui(ui: &AppWindow, state: &AppViewState) 
         ui.global::<App>().set_device_abi("-".into());
         ui.global::<App>().set_device_battery("-".into());
         ui.global::<App>().set_device_imei("-".into());
+        ui.global::<App>().set_device_imei2("".into());
         ui.global::<App>().set_device_wifi_ip("-".into());
         ui.global::<App>().set_device_wifi_mac("-".into());
         ui.global::<App>().set_device_bluetooth_mac("-".into());
