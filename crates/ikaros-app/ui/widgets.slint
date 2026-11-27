@@ -88,6 +88,8 @@ export component InfoCard inherits Rectangle {
     in property <string> title: "";
     in property <string> value: "";
     in property <bool> multiline: false;
+    in property <bool> compact: false;
+    in property <bool> show_value: true;
     callback clicked();
 
     property <bool> just_copied: false;
@@ -105,6 +107,7 @@ export component InfoCard inherits Rectangle {
     animate border-color { duration: 150ms; }
 
     touch := TouchArea {
+        enabled: root.show_value;
         mouse-cursor: pointer;
         clicked => {
             root.just_copied = true;
@@ -114,6 +117,8 @@ export component InfoCard inherits Rectangle {
 
     VerticalLayout {
         padding: 14px;
+        padding-top: root.compact ? 8px : 14px;
+        padding-bottom: self.padding-top;
         spacing: 6px;
 
         HorizontalLayout {
@@ -140,7 +145,7 @@ export component InfoCard inherits Rectangle {
             }
         }
 
-        Text {
+        if root.show_value: Text {
             text: root.value;
             font-size: root.multiline ? 13px : 15px;
             font-weight: 600;
@@ -149,11 +154,14 @@ export component InfoCard inherits Rectangle {
             overflow: root.multiline ? clip : elide;
             min-width: 0px;
         }
+
+        @children
     }
 }
 
 export component CopyText inherits Text {
     in property <color> idle_color: #ffffff;
+    in property <bool> enabled: true;
     callback copy();
 
     property <bool> just_copied: false;
@@ -164,6 +172,7 @@ export component CopyText inherits Text {
     animate color { duration: 120ms; }
 
     touch := TouchArea {
+        enabled: root.enabled;
         mouse-cursor: pointer;
         clicked => {
             root.just_copied = true;

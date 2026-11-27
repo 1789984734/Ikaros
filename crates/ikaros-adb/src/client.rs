@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ikaros_domain::{Device, DeviceDetail, DeviceRepository, DeviceStatus, DomainError};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -159,8 +160,8 @@ impl AdbClient {
     }
 
     /// 解析 `getprop` 全量输出: 每行形如 `[ro.product.brand]: [Google]`
-    pub(crate) fn parse_getprop(output: &str) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
+    pub(crate) fn parse_getprop(output: &str) -> HashMap<String, String> {
+        let mut map = HashMap::new();
         for line in output.lines() {
             let line = line.trim();
             let Some((key_part, value_part)) = line.split_once("]: [") else {
@@ -309,8 +310,78 @@ impl AdbClient {
         Ok(String::from_utf8_lossy(&output).trim().to_string())
     }
 
-    /// 尝试通过 service call 或 getprop 提取设备的 IMEI 标识码
-    async fn get_imei(&self, serial: &str) -> Option<String> {
+    async fn get_imeis(
+        &self,
+        serial: &str,
+        sdk_api_level: u32,
+        props: &HashMap<String, String>,
+    ) -> (Option<String>, Option<String>) {
+        let (slot1, slot2) = tokio::join!(
+            self.get_imei_for_slot(serial, sdk_api_level, 0),
+            self.get_imei_for_slot(serial, sdk_api_level, 1),
+        );
+        let mut imei = slot1.or_else(|| Self::imei_from_properties(props, 0, slot2.as_deref()));
+        // 单卡设备的 getDeviceIdForPhone 可能为无效卡槽返回第一卡槽的号码。
+        let imei2 = slot2
+            .filter(|value| Some(value.as_str()) != imei.as_deref())
+            .or_else(|| Self::imei_from_properties(props, 1, imei.as_deref()));
+        if imei.is_none() {
+            imei = self
+                .get_default_imei(serial)
+                .await
+                .filter(|value| Some(value.as_str()) != imei2.as_deref());
+        }
+        (imei, imei2)
+    }
+
+    async fn get_imei_for_slot(
+        &self,
+        serial: &str,
+        sdk_api_level: u32,
+        slot: usize,
+    ) -> Option<String> {
+        // IPhoneSubInfo.getDeviceIdForPhone 的事务编号和参数随系统版本变化。
+        let command = match sdk_api_level {
+            22..=23 => format!("service call iphonesubinfo 3 i32 {slot}"),
+            24..=29 => format!("service call iphonesubinfo 3 i32 {slot} s16 com.android.shell"),
+            // Parcel 字符串长度为 -1 时表示 null，这里对应 callingFeatureId。
+            30.. => format!("service call iphonesubinfo 4 i32 {slot} s16 com.android.shell i32 -1"),
+            _ => return None,
+        };
+        let output = self.execute_shell(serial, &command).await.ok()?;
+        Self::parse_imei_from_service_call(&output)
+    }
+
+    fn imei_from_properties(
+        props: &HashMap<String, String>,
+        slot: usize,
+        other_imei: Option<&str>,
+    ) -> Option<String> {
+        let keys = [
+            "persist.radio.imei",
+            "ro.ril.oem.imei",
+            "ril.gsm.imei",
+            "gsm.baseband.imei",
+        ];
+        let numbered = keys
+            .iter()
+            .filter_map(|key| props.get(&format!("{key}{}", slot + 1)).map(String::as_str));
+        let ordered = keys
+            .iter()
+            .filter_map(|key| props.get(*key)?.split(',').nth(slot));
+
+        numbered
+            .chain(ordered)
+            .map(str::trim)
+            .find(|value| {
+                (14..=16).contains(&value.len())
+                    && value.bytes().all(|byte| byte.is_ascii_digit())
+                    && Some(*value) != other_imei
+            })
+            .map(str::to_owned)
+    }
+
+    async fn get_default_imei(&self, serial: &str) -> Option<String> {
         let commands = [
             "service call iphonesubinfo 1 s16 com.android.shell",
             "service call iphonesubinfo 1",
@@ -326,46 +397,33 @@ impl AdbClient {
             }
         }
 
-        let props = [
-            "persist.radio.imei",
-            "ro.ril.oem.imei",
-            "ril.gsm.imei",
-            "gsm.baseband.imei",
-        ];
-        for prop in props {
-            if let Ok(val) = self.get_property(serial, prop).await {
-                let trimmed = val.trim();
-                if trimmed.len() >= 14 && trimmed.chars().all(|c| c.is_ascii_digit()) {
-                    return Some(trimmed.to_string());
-                }
-            }
-        }
-
         None
     }
 
-    /// 从 service call 的十六进制 dump 输出中提取 14-16 位 IMEI 纯数字
+    /// 从成功返回的 Binder Parcel 中读取 14–16 位 IMEI。
     fn parse_imei_from_service_call(output: &str) -> Option<String> {
-        let mut digits = String::new();
-        for line in output.lines() {
-            if let Some(start) = line.find('\'') {
-                if let Some(end) = line.rfind('\'') {
-                    if end > start {
-                        let content = &line[start + 1..end];
-                        for ch in content.chars() {
-                            if ch.is_ascii_digit() {
-                                digits.push(ch);
-                            }
-                        }
-                    }
-                }
-            }
+        let header = output
+            .lines()
+            .find_map(|line| line.trim_start().strip_prefix("0x00000000:"))?;
+        let mut words = header.split_whitespace();
+        if words.next()? != "00000000" {
+            return None;
         }
-        if digits.len() >= 14 && digits.len() <= 16 {
-            Some(digits)
-        } else {
-            None
+        let length = usize::from_str_radix(words.next()?, 16).ok()?;
+        if !(14..=16).contains(&length) {
+            return None;
         }
+        let digits: String = output
+            .lines()
+            .filter_map(|line| {
+                let (_, text) = line.split_once('\'')?;
+                let (text, _) = text.rsplit_once('\'')?;
+                Some(text)
+            })
+            .flat_map(str::chars)
+            .filter(char::is_ascii_digit)
+            .collect();
+        (digits.len() == length).then_some(digits)
     }
 }
 
@@ -503,9 +561,10 @@ impl DeviceRepository for AdbClient {
             }
         });
 
-        // 获取设备识别码 IMEI (优先通过 service call 与系统属性探测)
-        let (imei, network) =
-            tokio::join!(self.get_imei(serial), self.device_network_info(serial),);
+        let ((imei, imei2), network) = tokio::join!(
+            self.get_imeis(serial, sdk_api_level, &prop_map),
+            self.device_network_info(serial),
+        );
 
         Ok(DeviceDetail {
             serial: serial.to_string(),
@@ -518,6 +577,7 @@ impl DeviceRepository for AdbClient {
             screen_density,
             battery_level,
             imei,
+            imei2,
             wifi_ip: network.wifi_ip,
             wifi_mac: network.wifi_mac,
             bluetooth_mac: network.bluetooth_mac,
@@ -591,6 +651,47 @@ impl DeviceRepository for AdbClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imei_service_call_requires_a_successful_string_reply() {
+        let output = "+Result: Parcel(
+  0x00000000: 00000000 0000000f 00360038 00300030 '........8.6.0.0.'
+  0x00000010: 00300030 00300030 00300030 00300030 '0.0.0.0.0.0.0.0.'
+  0x00000020: 00300030 00000031                   '0.0.1...        ')";
+        assert_eq!(
+            AdbClient::parse_imei_from_service_call(output).as_deref(),
+            Some("860000000000001")
+        );
+        let failed_reply = output.replacen("00000000 0000000f", "ffffffff 0000000f", 1);
+        assert_eq!(AdbClient::parse_imei_from_service_call(&failed_reply), None);
+    }
+
+    #[test]
+    fn imei_properties_preserve_slots_and_ignore_duplicate_values() {
+        let properties = AdbClient::parse_getprop(
+            "[persist.radio.imei]: [, 860000000000002]\n\
+             [persist.radio.imei2]: [860000000000001]",
+        );
+        assert_eq!(AdbClient::imei_from_properties(&properties, 0, None), None);
+        assert_eq!(
+            AdbClient::imei_from_properties(&properties, 1, Some("860000000000001")).as_deref(),
+            Some("860000000000002")
+        );
+
+        let properties = AdbClient::parse_getprop(
+            "[ro.ril.oem.imei]: [860000000000003]\n\
+             [ro.ril.oem.imei1]: [860000000000001]\n\
+             [ro.ril.oem.imei2]: [860000000000002]",
+        );
+        assert_eq!(
+            AdbClient::imei_from_properties(&properties, 0, None).as_deref(),
+            Some("860000000000001")
+        );
+        assert_eq!(
+            AdbClient::imei_from_properties(&properties, 1, None).as_deref(),
+            Some("860000000000002")
+        );
+    }
 
     #[test]
     fn parse_getprop_reads_properties_and_resolves_build_number() {

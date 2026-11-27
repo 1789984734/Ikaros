@@ -68,8 +68,11 @@ pub struct DeviceDetail {
     pub screen_density: u32,
     /// 当前电池电量百分比 (0-100)
     pub battery_level: Option<u8>,
-    /// 设备国际移动设备识别码 (IMEI)
+    /// 第一卡槽的国际移动设备识别码，或设备提供的默认 IMEI
     pub imei: Option<String>,
+    /// 第二卡槽的国际移动设备识别码
+    #[serde(default)]
+    pub imei2: Option<String>,
     /// 当前 Wi-Fi 连接的 IP 地址
     #[serde(default)]
     pub wifi_ip: Option<String>,

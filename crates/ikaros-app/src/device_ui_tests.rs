@@ -106,6 +106,7 @@ fn device_context_menu_copies_the_clicked_serial_without_switching_devices() {
         screen_density: 480,
         battery_level: Some(85),
         imei: Some("860000000000001".into()),
+        imei2: Some("860000000000002".into()),
         wifi_ip: Some("192.168.1.100".into()),
         wifi_mac: Some("02:00:00:00:00:00".into()),
         bluetooth_mac: Some("02:00:00:00:00:01".into()),
@@ -117,11 +118,22 @@ fn device_context_menu_copies_the_clicked_serial_without_switching_devices() {
         "UQ1A.240205.004"
     );
     assert_eq!(ui.global::<App>().get_device_android_version(), "14");
+    render(&window);
+    copied.borrow_mut().clear();
+    click(ui.window(), 940., 286., PointerEventButton::Left);
+    click(ui.window(), 940., 300., PointerEventButton::Left);
+    assert_eq!(*copied.borrow(), ["860000000000001", "860000000000002"]);
 
-    // 验证空内部版本号回退为“未知”
-    if let Some(detail) = state.selected_device_detail.as_mut() {
-        detail.build_number = String::new();
-    }
+    // 更新为单 IMEI 后应清除原先的第二卡槽号码。
+    let detail = state.selected_device_detail.as_mut().unwrap();
+    detail.build_number.clear();
+    detail.imei2 = None;
     crate::apply_device_hardware_to_ui(&ui, &state);
     assert_eq!(ui.global::<App>().get_device_build_number(), "未知");
+    render(&window);
+    click(ui.window(), 940., 294., PointerEventButton::Left);
+    assert_eq!(
+        copied.borrow().last().map(String::as_str),
+        Some("860000000000001")
+    );
 }
