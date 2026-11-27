@@ -20,7 +20,9 @@ impl AdbClient {
         tx: Sender<LogEntry>,
         mut stop: Receiver<bool>,
     ) -> Result<(), DomainError> {
-        let mut lines = BufReader::new(stream).lines();
+        let mut reader = BufReader::new(stream);
+        // 在 select! 循环外复用行缓冲，避免被其他分支取消时丢失已读字节
+        let mut raw_line = Vec::new();
         let refresh = self.refresh_logcat_processes(serial);
         tokio::pin!(refresh);
         loop {
@@ -31,9 +33,19 @@ impl AdbClient {
                     if let Ok(snapshot) = result { processes = snapshot; }
                     refresh.set(self.refresh_logcat_processes(serial));
                 }
-                result = lines.next_line() => {
-                    let Ok(Some(line)) = result else { break };
-                    if !send_record(&line, &processes, &tx, &mut stop).await { break; }
+                result = reader.read_until(b'\n', &mut raw_line) => {
+                    let count = result.map_err(|error| {
+                        DomainError::ShellExecutionFailed(format!("读取日志流失败: {error}"))
+                    })?;
+                    if count == 0 && raw_line.is_empty() {
+                        break;
+                    }
+                    let line = String::from_utf8_lossy(&raw_line);
+                    let keep_going = send_record(&line, &processes, &tx, &mut stop).await;
+                    raw_line.clear();
+                    if !keep_going || count == 0 {
+                        break;
+                    }
                 }
             }
         }
@@ -251,5 +263,60 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn invalid_utf8_bytes_do_not_interrupt_logcat_stream() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adb = AdbClient::new(listener.local_addr().unwrap());
+        let (first_received_tx, first_received_rx) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut metadata, _) = listener.accept().await.unwrap();
+            assert!(request(&mut metadata).await.starts_with("shell:ps -A"));
+            metadata
+                .write_all(b"PID UID USER NAME\n1234 10123 u0_a123 com.example\npackage:com.example uid:10123\n")
+                .await
+                .unwrap();
+            drop(metadata);
+
+            let (mut socket, _) = listener.accept().await.unwrap();
+            assert_eq!(
+                request(&mut socket).await,
+                "shell:logcat -v threadtime -v uid"
+            );
+            // 模拟长日志截断或底层脏字节产生的非法 UTF-8 序列
+            socket
+                .write_all(b"10-27 19:22:30.123  1234  5678 I Test: prefix \xff\xfe\n")
+                .await
+                .unwrap();
+            // 确认第一条日志已被消费后再发送下一条，验证流未因解码异常退出
+            first_received_rx.await.unwrap();
+            socket
+                .write_all(b"10-27 19:22:31.000  1234  5678 I Test: recovered\n")
+                .await
+                .unwrap();
+        });
+
+        let (tx, mut rx) = mpsc::channel(4);
+        let (_stop, signal) = watch::channel(false);
+        let stream = tokio::spawn(async move { adb.start_logcat_stream("test", tx, signal).await });
+
+        timeout(Duration::from_secs(1), async {
+            let first = rx.recv().await.unwrap();
+            assert_eq!(first.tag, "Test");
+            assert_eq!(first.package_name.as_deref(), Some("com.example"));
+            assert!(first.message.starts_with("prefix "));
+            assert!(first.message.contains('\u{FFFD}'));
+            let _ = first_received_tx.send(());
+
+            let second = rx.recv().await.unwrap();
+            assert_eq!(second.message, "recovered");
+            assert!(rx.recv().await.is_none());
+
+            stream.await.unwrap().unwrap();
+            server.await.unwrap();
+        })
+        .await
+        .expect("包含非法 UTF-8 字节的日志行不应中断实时抓取流");
     }
 }
