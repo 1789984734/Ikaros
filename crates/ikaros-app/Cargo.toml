@@ -13,7 +13,14 @@ ikaros-usecase = { workspace = true }
 ikaros-adb = { workspace = true }
 
 tokio = { workspace = true }
-slint = { workspace = true }
+slint = { workspace = true, features = [
+    "std",
+    "backend-default",
+    "renderer-software",
+    "accessibility",
+    "compat-1-2",
+    "system-tray",
+] }
 serde_json = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }
@@ -24,11 +31,18 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+slint = { workspace = true, features = ["renderer-femtovg"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
+slint = { workspace = true, features = ["renderer-femtovg-wgpu"] }
 i-slint-backend-winit = { version = "=1.18.1", default-features = false, features = ["muda"] }
 muda = { version = "0.19.3", default-features = false }
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSView", "NSWindow"] }
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSView", "NSWindow", "objc2-quartz-core"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGColorSpace"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std", "CALayer", "CAMetalLayer", "objc2-core-graphics"] }
 raw-window-handle = "0.6"
 
 [build-dependencies]

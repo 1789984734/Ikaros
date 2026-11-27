@@ -31,22 +31,52 @@ pub fn init() -> Result<Menu, Box<dyn std::error::Error>> {
     Ok(menu)
 }
 
+/// 解析 macOS 诊断环境变量 `IKAROS_RENDERER` 指定的渲染器名称
+fn parse_renderer_name(value: Option<&str>) -> Result<Option<&str>, String> {
+    match value {
+        None => Ok(None),
+        Some(renderer) if matches!(renderer, "femtovg-wgpu" | "software") => Ok(Some(renderer)),
+        Some(renderer) => Err(format!(
+            "不支持的 IKAROS_RENDERER={renderer:?}，可选值为 femtovg-wgpu 或 software"
+        )),
+    }
+}
+
 fn init_backend() -> Result<(), Box<dyn std::error::Error>> {
     let mut builder = i_slint_backend_winit::Backend::builder().with_default_menu_bar(false);
-    match std::env::var("IKAROS_RENDERER") {
-        Ok(renderer) if matches!(renderer.as_str(), "software" | "femtovg") => {
-            tracing::info!(renderer, "使用指定的 Slint 渲染器");
-            builder = builder.with_renderer_name(renderer);
-        }
-        Ok(renderer) => {
-            return Err(format!(
-                "不支持的 IKAROS_RENDERER={renderer:?}，可选值为 software 或 femtovg"
-            )
-            .into());
-        }
-        Err(std::env::VarError::NotPresent) => {}
+    let env_renderer = match std::env::var("IKAROS_RENDERER") {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
         Err(error) => return Err(error.into()),
+    };
+    if let Some(renderer) = parse_renderer_name(env_renderer.as_deref())? {
+        tracing::info!(renderer, "使用指定的 Slint 渲染器");
+        builder = builder.with_renderer_name(renderer);
     }
     slint::platform::set_platform(Box::new(builder.build()?))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_renderer_name;
+
+    #[test]
+    fn parse_renderer_name_accepts_unset_and_supported_values() {
+        assert_eq!(parse_renderer_name(None), Ok(None));
+        assert_eq!(
+            parse_renderer_name(Some("femtovg-wgpu")),
+            Ok(Some("femtovg-wgpu"))
+        );
+        assert_eq!(parse_renderer_name(Some("software")), Ok(Some("software")));
+    }
+
+    #[test]
+    fn parse_renderer_name_rejects_unsupported_values() {
+        let legacy = parse_renderer_name(Some("femtovg")).unwrap_err();
+        assert!(legacy.contains("femtovg-wgpu"));
+        assert!(legacy.contains("software"));
+
+        assert!(parse_renderer_name(Some("")).is_err());
+    }
 }

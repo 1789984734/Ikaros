@@ -25,7 +25,7 @@ serde_json = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 # UI 框架
-slint = "1.18.1"
+slint = { version = "1.18.1", default-features = false }
 slint-build = "1.18.1"
 
 # Workspace 内部子 Crate

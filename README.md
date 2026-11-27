@@ -89,14 +89,14 @@
 cargo run --bin ikaros
 ```
 
-macOS 排查窗口闪烁时，可使用同一版本分别启动软件渲染与 FemtoVG/OpenGL，对比 Logcat、页面切换及鼠标悬停时的表现：
+macOS 默认已启用基于 Metal 的 `femtovg-wgpu` 渲染器，以避免废弃 OpenGL 合成导致的窗口闪烁；如需诊断或对比，可使用同一版本分别切换 `femtovg-wgpu` 与软件渲染（`software`）运行：
 
 ```bash
+IKAROS_RENDERER=femtovg-wgpu cargo run --bin ikaros
 IKAROS_RENDERER=software cargo run --bin ikaros
-IKAROS_RENDERER=femtovg cargo run --bin ikaros
 ```
 
-`IKAROS_RENDERER` 仅用于 macOS 渲染诊断，支持 `software` 和 `femtovg`；启动日志会记录指定值，其他值会报错退出。未设置时沿用 Slint 默认渲染器。对照结果用于定位问题，不代表已经修复闪烁。
+`IKAROS_RENDERER` 仅用于 macOS 渲染器诊断，支持 `femtovg-wgpu` 和 `software`；启动日志会记录指定值，其他值会报错退出。未设置时默认使用 `femtovg-wgpu`。
 
 应用名称和图标通过内嵌的只读 DEX 辅助程序读取，无需在设备上安装 APK，普通 Cargo 构建也不依赖 Android SDK。修改 `crates/ikaros-adb/device-helper/PackageMetadata.java` 后，需要使用 JDK 及 Android SDK 重新生成辅助程序：
 
