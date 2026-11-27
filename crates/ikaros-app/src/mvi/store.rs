@@ -162,14 +162,25 @@ impl AppStore {
             }
 
             // 投屏
-            AppIntent::StartMirroring(options) => {
-                self.start_mirroring(options).await;
+            AppIntent::StartMirroring { serial, options } => {
+                self.start_mirroring(serial, options).await;
             }
-            AppIntent::StopMirroring => {
-                self.stop_mirroring();
+            AppIntent::StopMirroring { serial } => {
+                self.stop_mirroring(serial);
             }
             AppIntent::ScrcpyExited { serial, pid } => {
                 self.scrcpy_exited(serial, pid);
+            }
+            AppIntent::ScrcpyRecoveryRequested {
+                serial,
+                pid,
+                options,
+                next,
+            } => {
+                self.recover_mirroring(serial, pid, options, next).await;
+            }
+            AppIntent::ScrcpyRecoveryBlocked { serial, pid } => {
+                self.scrcpy_recovery_blocked(&serial, pid);
             }
 
             // 文件管理

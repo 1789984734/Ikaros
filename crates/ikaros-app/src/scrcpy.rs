@@ -1,5 +1,6 @@
 //! 外部官方 scrcpy 客户端的启动参数拼装与进程管理
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -11,6 +12,58 @@ pub const MAX_FPS_PRESETS: [u16; 5] = [0, 30, 60, 90, 120];
 pub const BIT_RATE_PRESETS: [&str; 4] = ["4M", "8M", "16M", "32M"];
 /// 视频编码预设, UI 下标 0 表示默认
 pub const VIDEO_CODECS: [&str; 3] = ["h264", "h265", "av1"];
+
+// Required operands in scrcpy v5.0.1. A separate operand may itself start with '-'.
+const LONG_OPTIONS_WITH_VALUE: &str = "angle audio-bit-rate audio-buffer audio-codec \
+    audio-codec-options audio-encoder audio-source audio-output-buffer video-bit-rate \
+    background-color camera-ar camera-facing camera-fps camera-id camera-size camera-zoom \
+    capture-orientation crop display-id display-ime-policy display-orientation gamepad hwdec \
+    keyboard max-size max-fps min-size-alignment mouse mouse-bind orientation port push-target \
+    record record-format record-orientation render-driver render-fit serial screen-off-timeout \
+    shortcut-mod start-app time-limit tunnel-host tunnel-port verbosity v4l2-sink v4l2-buffer \
+    video-buffer video-codec video-codec-options video-encoder video-source window-title \
+    window-x window-y window-width window-height";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScrcpyPreferences {
+    pub max_size_index: i32,
+    pub max_fps_index: i32,
+    pub bit_rate_index: i32,
+    pub codec_index: i32,
+    pub audio: bool,
+    pub stay_awake: bool,
+    pub extra_args: String,
+}
+
+impl Default for ScrcpyPreferences {
+    fn default() -> Self {
+        Self {
+            max_size_index: 0,
+            max_fps_index: 2,
+            bit_rate_index: 2,
+            codec_index: 0,
+            audio: false,
+            stay_awake: true,
+            extra_args: String::new(),
+        }
+    }
+}
+
+impl ScrcpyPreferences {
+    pub fn launch_options(&self, binary_path: String) -> ScrcpyLaunchOptions {
+        ScrcpyLaunchOptions {
+            binary_path,
+            max_size: numeric_preset(&MAX_SIZE_PRESETS, self.max_size_index as usize),
+            max_fps: numeric_preset(&MAX_FPS_PRESETS, self.max_fps_index as usize),
+            bit_rate: choice_preset(&BIT_RATE_PRESETS, self.bit_rate_index as usize),
+            video_codec: choice_preset(&VIDEO_CODECS, self.codec_index as usize),
+            audio: self.audio,
+            stay_awake: self.stay_awake,
+            extra_args: parse_extra_args(&self.extra_args),
+        }
+    }
+}
 
 /// 从 UI 收集的 scrcpy 启动配置 (None 表示省略对应命令行参数)
 #[derive(Debug, Clone)]
@@ -24,6 +77,118 @@ pub struct ScrcpyLaunchOptions {
     pub audio: bool,
     pub stay_awake: bool,
     pub extra_args: Vec<String>,
+}
+
+impl ScrcpyLaunchOptions {
+    pub fn uses_h265_video(&self) -> bool {
+        let mut codec = self.video_codec.as_deref();
+        for option in extra_options(&self.extra_args) {
+            match option.name {
+                "--no-video" | "--otg" => return false,
+                "--video-codec" => codec = option.value,
+                _ => {}
+            }
+        }
+        codec == Some("h265")
+    }
+
+    pub fn use_h264(&mut self) {
+        self.video_codec = Some("h264".into());
+        self.extra_args = extra_options(&self.extra_args)
+            .filter(|option| {
+                !matches!(
+                    option.name,
+                    "--video-codec" | "--video-encoder" | "--video-codec-options"
+                )
+            })
+            .flat_map(|option| option.raw.iter().cloned())
+            .collect();
+    }
+
+    pub fn recording_path(&self) -> Option<&str> {
+        extra_options(&self.extra_args)
+            .filter(|option| option.name == "--record")
+            .last()
+            .and_then(|option| option.value)
+    }
+
+    pub fn kills_adb_on_exit(&self) -> bool {
+        extra_options(&self.extra_args).any(|option| option.name == "--kill-adb-on-close")
+    }
+
+    pub fn continue_recording(&mut self, previous_pid: u32) {
+        let Some(path) = self.recording_path().map(Path::new) else {
+            return;
+        };
+        let mut name = path.file_stem().unwrap_or_default().to_os_string();
+        let stamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        name.push(format!("-recovery-{previous_pid}-{stamp}"));
+        if let Some(extension) = path.extension() {
+            name.push(".");
+            name.push(extension);
+        }
+        let path = path.with_file_name(name);
+        let end_of_options = extra_options(&self.extra_args)
+            .find(|option| option.name == "--")
+            .map_or(self.extra_args.len(), |option| {
+                self.extra_args.len() - option.raw.len()
+            });
+        self.extra_args
+            .insert(end_of_options, format!("--record={}", path.display()));
+    }
+}
+
+struct ExtraOption<'a> {
+    name: &'a str,
+    value: Option<&'a str>,
+    raw: &'a [String],
+}
+
+fn extra_options(mut args: &[String]) -> impl Iterator<Item = ExtraOption<'_>> {
+    std::iter::from_fn(move || {
+        let (argument, rest) = args.split_first()?;
+        let (name, mut value, takes_value) = argument_parts(argument);
+        let length = if name == "--" {
+            args.len()
+        } else if takes_value && value.is_none() && !rest.is_empty() {
+            value = rest.first().map(String::as_str);
+            2
+        } else {
+            1
+        };
+        let (raw, remaining) = args.split_at(length);
+        args = remaining;
+        Some(ExtraOption { name, value, raw })
+    })
+}
+
+fn argument_parts(argument: &str) -> (&str, Option<&str>, bool) {
+    if argument.starts_with("--") {
+        if let Some((name, value)) = argument.split_once('=') {
+            return (name, Some(value), false);
+        }
+        let takes_value = LONG_OPTIONS_WITH_VALUE
+            .split_ascii_whitespace()
+            .any(|option| option == &argument[2..]);
+        return (argument, None, takes_value);
+    }
+    if let Some((flag, value)) = short_option_with_value(argument) {
+        let name = if flag == 'r' { "--record" } else { argument };
+        return (name, (!value.is_empty()).then_some(value), true);
+    }
+    (argument, None, false)
+}
+
+fn short_option_with_value(argument: &str) -> Option<(char, &str)> {
+    let flags = argument.strip_prefix('-')?;
+    if flags.starts_with('-') {
+        return None;
+    }
+    // scrcpy's short options with required values, including bundles such as -SrFILE.
+    flags
+        .char_indices()
+        .find(|(_, flag)| "bmprsV".contains(*flag))
+        .map(|(index, flag)| (flag, &flags[index + flag.len_utf8()..]))
 }
 
 /// UI 数字下拉框下标转可选值, 0 (未设置) 返回 None
@@ -182,5 +347,67 @@ mod tests {
         let args = parse_extra_args("--video-codec-options=profile=1 --record=\"my file.mp4\"");
         assert_eq!(args.len(), 2);
         assert_eq!(args[1], "--record=my file.mp4");
+    }
+
+    #[test]
+    fn h264_recovery_preserves_other_launch_options_and_discards_hevc_overrides() {
+        let mut preferred = sample_options();
+        preferred.video_codec = None;
+        preferred.extra_args = parse_extra_args(
+            "--video-codec=h264 --video-codec h265 --video-encoder=OMX.sprd.h265.encoder \
+             --video-codec-options profile=2 --window-title='Test device' --max-fps=30",
+        );
+        assert!(preferred.uses_h265_video());
+        let mut fallback = preferred.clone();
+        fallback.use_h264();
+        assert!(!fallback.uses_h265_video());
+        assert_eq!(fallback.video_codec.as_deref(), Some("h264"));
+        assert_eq!(
+            fallback.extra_args,
+            ["--window-title=Test device", "--max-fps=30"]
+        );
+        assert_eq!(fallback.bit_rate, preferred.bit_rate);
+        assert!(preferred.uses_h265_video());
+
+        preferred.extra_args.push("--no-video".into());
+        assert!(!preferred.uses_h265_video());
+    }
+
+    #[test]
+    fn recovered_recordings_use_a_separate_file_with_the_original_format() {
+        for given_args in [
+            "--record=clip.mp4",
+            "--record clip.mp4",
+            "-Srclip.mp4",
+            "-r clip.mp4",
+        ] {
+            let mut options = sample_options();
+            options.extra_args = parse_extra_args(given_args);
+            assert_eq!(options.recording_path(), Some("clip.mp4"));
+            options.continue_recording(345);
+            let continuation = options.recording_path().unwrap();
+            assert!(continuation.starts_with("clip-recovery-345-"));
+            assert!(continuation.ends_with(".mp4"));
+        }
+    }
+
+    #[test]
+    fn recovery_leaves_flag_like_operands_untouched() {
+        let mut options = sample_options();
+        options.extra_args = parse_extra_args(
+            "--window-title --record=title.mp4 --push-target --video-encoder=path --video-codec=h265",
+        );
+        assert!(options.recording_path().is_none());
+        assert!(options.uses_h265_video());
+        options.use_h264();
+        assert_eq!(
+            options.extra_args,
+            [
+                "--window-title",
+                "--record=title.mp4",
+                "--push-target",
+                "--video-encoder=path"
+            ]
+        );
     }
 }

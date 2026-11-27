@@ -1,4 +1,4 @@
-use crate::scrcpy::ScrcpyLaunchOptions;
+use crate::{scrcpy::ScrcpyLaunchOptions, scrcpy_recovery::RecoveryStep};
 use ikaros_domain::{
     AppFilterType, AppInfo, Device, DeviceDetail, LogEntry, LogLevel, RemoteFile, TransferProgress,
 };
@@ -51,11 +51,26 @@ pub enum AppIntent {
 
     // ========== 投屏交互意图 ==========
     /// 使用 UI 收集的参数启动外部 scrcpy 客户端
-    StartMirroring(ScrcpyLaunchOptions),
+    StartMirroring {
+        serial: String,
+        options: ScrcpyLaunchOptions,
+    },
     /// 停止当前选中设备的投屏
-    StopMirroring,
+    StopMirroring {
+        serial: String,
+    },
     /// 指定设备的 scrcpy 进程退出，忽略已被替换会话的通知。
     ScrcpyExited {
+        serial: String,
+        pid: u32,
+    },
+    ScrcpyRecoveryRequested {
+        serial: String,
+        pid: u32,
+        options: ScrcpyLaunchOptions,
+        next: RecoveryStep,
+    },
+    ScrcpyRecoveryBlocked {
         serial: String,
         pid: u32,
     },

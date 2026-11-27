@@ -21,7 +21,7 @@ export component ScrcpyTab inherits VerticalLayout {
         }
 
         Text {
-            text: App.is_mirroring ? "🟢 当前设备正在投屏，切换设备可保留此窗口" : "⚪ 当前设备未在投屏";
+            text: App.scrcpy_using_fallback ? "🟢 当前设备已自动切换到 H.264" : App.is_mirroring ? "🟢 当前设备正在投屏，切换设备可保留此窗口" : "⚪ 当前设备未在投屏";
             vertical-alignment: center;
             font-size: 13px;
             color: App.is_mirroring ? #7ee787 : #8b92b0;
@@ -47,6 +47,7 @@ export component ScrcpyTab inherits VerticalLayout {
             preferred-width: 0px;
             horizontal-stretch: 1;
             current-index <=> App.scrcpy_max_size;
+            selected => { App.scrcpy_preferences_changed(); }
         }
 
         ComboBox {
@@ -55,6 +56,7 @@ export component ScrcpyTab inherits VerticalLayout {
             preferred-width: 0px;
             horizontal-stretch: 1;
             current-index <=> App.scrcpy_max_fps;
+            selected => { App.scrcpy_preferences_changed(); }
         }
 
         ComboBox {
@@ -63,6 +65,7 @@ export component ScrcpyTab inherits VerticalLayout {
             preferred-width: 0px;
             horizontal-stretch: 1;
             current-index <=> App.scrcpy_bit_rate;
+            selected => { App.scrcpy_preferences_changed(); }
         }
 
         ComboBox {
@@ -71,6 +74,7 @@ export component ScrcpyTab inherits VerticalLayout {
             preferred-width: 0px;
             horizontal-stretch: 1;
             current-index <=> App.scrcpy_codec;
+            selected => { App.scrcpy_preferences_changed(); }
         }
     }
 
@@ -88,11 +92,13 @@ export component ScrcpyTab inherits VerticalLayout {
         CheckBox {
             text: "转发音频";
             checked <=> App.scrcpy_audio;
+            toggled => { App.scrcpy_preferences_changed(); }
         }
 
         CheckBox {
             text: "投屏期间屏幕常亮";
             checked <=> App.scrcpy_stay_awake;
+            toggled => { App.scrcpy_preferences_changed(); }
         }
 
         Rectangle { }

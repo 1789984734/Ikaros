@@ -1,33 +1,70 @@
 //! 投屏页面自定义参数 Tag 的交互绑定: 输入框内容与 Tag 列表联动并持久化
 
 use crate::{
-    scrcpy, scrcpy_parameters, scrcpy_tags, App, AppWindow, ScrcpyParameterInfo, ScrcpyTagData,
+    app_config::{self, AppConfig},
+    scrcpy::{self, ScrcpyPreferences},
+    scrcpy_parameters, scrcpy_tags, App, AppWindow, ScrcpyParameterInfo, ScrcpyTagData,
 };
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use std::collections::HashSet;
 use std::rc::Rc;
 
-/// 绑定 Tag 相关回调, 启动时从本地配置恢复 Tag 列表与选中参数
+/// 恢复共享 Tag 列表，选中状态随当前设备的自定义参数更新。
 pub fn bind(ui: &AppWindow) {
     bind_parameter_help(ui);
-    let model = restore_tags(
-        ui,
-        scrcpy_tags::load_tags(),
-        crate::app_config::load().scrcpy_extra_args,
-    );
+    apply_preferences(ui, &ScrcpyPreferences::default());
+    let model = restore_tags(ui, scrcpy_tags::load_tags());
 
-    bind_input_sync(ui, model.clone(), save_extra_args);
+    bind_preferences_persistence(ui, save_preferences);
+    bind_input_sync(ui, model.clone());
     bind_add(ui, model.clone());
     bind_toggle(ui, model.clone());
     bind_remove(ui, model);
 }
 
-fn restore_tags(
+pub(crate) fn select_device(
     ui: &AppWindow,
-    tags: Vec<String>,
-    extra_args: String,
-) -> Rc<VecModel<ScrcpyTagData>> {
-    ui.global::<App>().set_scrcpy_extra_args(extra_args.into());
+    serial: Option<&str>,
+    load: impl FnOnce() -> AppConfig,
+) {
+    let app = ui.global::<App>();
+    let next_serial = serial.unwrap_or("未连接");
+    if app.get_current_serial().as_str() == next_serial {
+        return;
+    }
+    let preferences = serial.map_or_else(ScrcpyPreferences::default, |serial| {
+        load().scrcpy_preferences(serial)
+    });
+    app.set_current_serial(next_serial.into());
+    apply_preferences(ui, &preferences);
+}
+
+pub(crate) fn current_preferences(ui: &AppWindow) -> ScrcpyPreferences {
+    let app = ui.global::<App>();
+    ScrcpyPreferences {
+        max_size_index: app.get_scrcpy_max_size(),
+        max_fps_index: app.get_scrcpy_max_fps(),
+        bit_rate_index: app.get_scrcpy_bit_rate(),
+        codec_index: app.get_scrcpy_codec(),
+        audio: app.get_scrcpy_audio(),
+        stay_awake: app.get_scrcpy_stay_awake(),
+        extra_args: app.get_scrcpy_extra_args().to_string(),
+    }
+}
+
+fn apply_preferences(ui: &AppWindow, preferences: &ScrcpyPreferences) {
+    let app = ui.global::<App>();
+    app.set_scrcpy_max_size(preferences.max_size_index);
+    app.set_scrcpy_max_fps(preferences.max_fps_index);
+    app.set_scrcpy_bit_rate(preferences.bit_rate_index);
+    app.set_scrcpy_codec(preferences.codec_index);
+    app.set_scrcpy_audio(preferences.audio);
+    app.set_scrcpy_stay_awake(preferences.stay_awake);
+    app.set_scrcpy_extra_args(preferences.extra_args.as_str().into());
+    sync_tag_selection(ui, &app.get_scrcpy_custom_tags());
+}
+
+fn restore_tags(ui: &AppWindow, tags: Vec<String>) -> Rc<VecModel<ScrcpyTagData>> {
     let model = Rc::new(VecModel::default());
     for text in tags {
         model.push(ScrcpyTagData {
@@ -37,7 +74,7 @@ fn restore_tags(
     }
     ui.global::<App>()
         .set_scrcpy_custom_tags(ModelRc::from(model.clone()));
-    sync_tag_selection(ui, &model);
+    sync_tag_selection(ui, model.as_ref());
     model
 }
 
@@ -88,26 +125,31 @@ async fn open_documentation(url: &str) {
     }
 }
 
-fn bind_input_sync(
-    ui: &AppWindow,
-    model: Rc<VecModel<ScrcpyTagData>>,
-    save: impl Fn(String) + 'static,
-) {
+fn bind_input_sync(ui: &AppWindow, model: Rc<VecModel<ScrcpyTagData>>) {
     let handle = ui.as_weak();
     ui.global::<App>().on_scrcpy_extra_args_changed(move || {
         if let Some(ui) = handle.upgrade() {
-            sync_tag_selection(&ui, &model);
-            save(ui.global::<App>().get_scrcpy_extra_args().to_string());
+            sync_tag_selection(&ui, model.as_ref());
+            ui.global::<App>().invoke_scrcpy_preferences_changed();
         }
     });
 }
 
-pub(crate) fn save_extra_args(extra_args: String) {
-    let mut config = crate::app_config::load();
-    if config.scrcpy_extra_args != extra_args {
-        config.scrcpy_extra_args = extra_args;
-        crate::app_config::save(&config);
-    }
+fn bind_preferences_persistence(ui: &AppWindow, save: impl Fn(&str, ScrcpyPreferences) + 'static) {
+    let handle = ui.as_weak();
+    ui.global::<App>().on_scrcpy_preferences_changed(move || {
+        let Some(ui) = handle.upgrade() else { return };
+        let serial = ui.global::<App>().get_current_serial();
+        if serial.as_str() != "未连接" {
+            save(serial.as_str(), current_preferences(&ui));
+        }
+    });
+}
+
+fn save_preferences(serial: &str, preferences: ScrcpyPreferences) {
+    app_config::update(|config| {
+        config.scrcpy_devices.insert(serial.to_owned(), preferences);
+    });
 }
 
 /// 把输入框当前解析出的参数逐个保存为 Tag (自动去重)
@@ -171,7 +213,7 @@ fn bind_remove(ui: &AppWindow, model: Rc<VecModel<ScrcpyTagData>>) {
 }
 
 /// 依据输入框当前解析出的参数刷新每个 Tag 的选中态
-fn sync_tag_selection(ui: &AppWindow, model: &VecModel<ScrcpyTagData>) {
+fn sync_tag_selection(ui: &AppWindow, model: &impl Model<Data = ScrcpyTagData>) {
     let active: HashSet<String> =
         scrcpy::parse_extra_args(&ui.global::<App>().get_scrcpy_extra_args())
             .into_iter()

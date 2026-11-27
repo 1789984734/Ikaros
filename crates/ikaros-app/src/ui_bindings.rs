@@ -1,4 +1,4 @@
-use crate::{mvi::AppIntent, scrcpy, scrcpy_ui, App, AppWindow};
+use crate::{mvi::AppIntent, scrcpy_ui, App, AppWindow};
 use ikaros_domain::{AppFilterType, LogLevel};
 use slint::{ComponentHandle, ModelRc, SharedString};
 use std::path::PathBuf;
@@ -109,40 +109,23 @@ pub fn bind_all(app: &AppWindow, tx: UnboundedSender<AppIntent>) {
         let ui_handle = app_weak.clone();
         app.global::<App>().on_start_mirroring(move || {
             if let Some(ui) = ui_handle.upgrade() {
-                let options = scrcpy::ScrcpyLaunchOptions {
-                    binary_path: ui.global::<App>().get_scrcpy_path().to_string(),
-                    max_size: scrcpy::numeric_preset(
-                        &scrcpy::MAX_SIZE_PRESETS,
-                        ui.global::<App>().get_scrcpy_max_size() as usize,
-                    ),
-                    max_fps: scrcpy::numeric_preset(
-                        &scrcpy::MAX_FPS_PRESETS,
-                        ui.global::<App>().get_scrcpy_max_fps() as usize,
-                    ),
-                    bit_rate: scrcpy::choice_preset(
-                        &scrcpy::BIT_RATE_PRESETS,
-                        ui.global::<App>().get_scrcpy_bit_rate() as usize,
-                    ),
-                    video_codec: scrcpy::choice_preset(
-                        &scrcpy::VIDEO_CODECS,
-                        ui.global::<App>().get_scrcpy_codec() as usize,
-                    ),
-                    audio: ui.global::<App>().get_scrcpy_audio(),
-                    stay_awake: ui.global::<App>().get_scrcpy_stay_awake(),
-                    extra_args: scrcpy::parse_extra_args(
-                        &ui.global::<App>().get_scrcpy_extra_args(),
-                    ),
-                };
-                scrcpy_ui::save_extra_args(ui.global::<App>().get_scrcpy_extra_args().to_string());
-                let _ = tx.send(AppIntent::StartMirroring(options));
+                let app = ui.global::<App>();
+                let serial = app.get_current_serial().to_string();
+                let options = scrcpy_ui::current_preferences(&ui)
+                    .launch_options(app.get_scrcpy_path().to_string());
+                let _ = tx.send(AppIntent::StartMirroring { serial, options });
             }
         });
     }
 
     {
         let tx = tx.clone();
+        let ui_handle = app_weak.clone();
         app.global::<App>().on_stop_mirroring(move || {
-            let _ = tx.send(AppIntent::StopMirroring);
+            if let Some(ui) = ui_handle.upgrade() {
+                let serial = ui.global::<App>().get_current_serial().to_string();
+                let _ = tx.send(AppIntent::StopMirroring { serial });
+            }
         });
     }
 
@@ -452,10 +435,10 @@ fn persist_scrcpy_path(app: &AppWindow) {
     let handle = app.as_weak();
     app.global::<App>().on_scrcpy_path_changed(move || {
         let Some(ui) = handle.upgrade() else { return };
-        let mut config = crate::app_config::load();
         let path = ui.global::<App>().get_scrcpy_path().to_string();
-        config.scrcpy_path = (!path.is_empty()).then_some(path);
-        crate::app_config::save(&config);
+        crate::app_config::update(|config| {
+            config.scrcpy_path = (!path.is_empty()).then_some(path);
+        });
     });
 }
 
@@ -474,11 +457,11 @@ fn remember_wireless_address(address: &str) -> Vec<SharedString> {
             .map(Into::into)
             .collect();
     }
-    let mut config = crate::app_config::load();
-    config.wireless_history.retain(|item| item != address);
-    config.wireless_history.insert(0, address.to_string());
-    config.wireless_history.truncate(8);
-    crate::app_config::save(&config);
+    let config = crate::app_config::update(|config| {
+        config.wireless_history.retain(|item| item != address);
+        config.wireless_history.insert(0, address.to_string());
+        config.wireless_history.truncate(8);
+    });
     config
         .wireless_history
         .into_iter()

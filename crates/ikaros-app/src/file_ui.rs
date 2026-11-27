@@ -85,9 +85,7 @@ fn bind_download_dir(ui: &AppWindow) {
             };
             let Some(ui) = handle.upgrade() else { return };
             let path = dir.path().to_string_lossy().into_owned();
-            let mut config = crate::app_config::load();
-            config.default_download_dir = Some(path.clone());
-            crate::app_config::save(&config);
+            crate::app_config::update(|config| config.default_download_dir = Some(path.clone()));
             ui.global::<App>().set_download_dir_text(path.into());
         });
     });

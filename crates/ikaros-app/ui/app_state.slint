@@ -28,13 +28,14 @@ export global App {
     in property <bool> is_shell_busy: false;
     in-out property <string> shell_input_text: "";
     in property <bool> is_mirroring: false;
+    in property <bool> scrcpy_using_fallback: false;
     in-out property <string> scrcpy_path: "";
-    in-out property <int> scrcpy_max_size: 0;  // 0: 不限制
-    in-out property <int> scrcpy_max_fps: 2;   // 默认 60
-    in-out property <int> scrcpy_bit_rate: 2;  // 默认 8M
-    in-out property <int> scrcpy_codec: 0;     // 0: 默认
-    in-out property <bool> scrcpy_audio: false;
-    in-out property <bool> scrcpy_stay_awake: true;
+    in-out property <int> scrcpy_max_size;
+    in-out property <int> scrcpy_max_fps;
+    in-out property <int> scrcpy_bit_rate;
+    in-out property <int> scrcpy_codec;
+    in-out property <bool> scrcpy_audio;
+    in-out property <bool> scrcpy_stay_awake;
     in-out property <string> scrcpy_extra_args: "";
     in property <[ScrcpyTagData]> scrcpy_custom_tags: [];
     in property <[ScrcpyParameterInfo]> scrcpy_parameter_help: [];
@@ -107,6 +108,7 @@ export global App {
     callback start_mirroring();
     callback stop_mirroring();
     callback browse_scrcpy_path();
+    callback scrcpy_preferences_changed();
     callback scrcpy_extra_args_changed();
     callback add_scrcpy_tag();
     callback toggle_scrcpy_tag(int);

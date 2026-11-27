@@ -15,6 +15,12 @@ pub struct PerformanceState {
     pub has_error: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MirroringProcess {
+    pub pid: u32,
+    pub using_h264_fallback: bool,
+}
+
 /// MVI 中的 ViewState（不可变单一数据源状态）
 #[derive(Clone)]
 pub struct AppViewState {
@@ -35,8 +41,8 @@ pub struct AppViewState {
     /// 终端是否有流式命令正在执行（执行期间禁止并发提交）
     pub is_shell_busy: bool,
 
-    /// 各设备正在运行的投屏会话，按设备序列号记录进程 PID。
-    pub mirroring_pids: HashMap<String, u32>,
+    /// 各设备正在运行的投屏进程，按设备序列号索引。
+    pub mirroring_processes: HashMap<String, MirroringProcess>,
 
     /// 当前文件管理浏览路径 (默认 /sdcard)
     pub current_dir: String,
@@ -91,7 +97,7 @@ impl Default for AppViewState {
             status_message: "就绪".to_string(),
             shell_output: String::new(),
             is_shell_busy: false,
-            mirroring_pids: HashMap::new(),
+            mirroring_processes: HashMap::new(),
             current_dir: "/sdcard".to_string(),
             file_list: Vec::new(),
             file_path_completion_query: String::new(),
@@ -121,8 +127,16 @@ impl Default for AppViewState {
 impl AppViewState {
     /// 当前选中设备是否已有投屏会话。
     pub fn is_mirroring(&self) -> bool {
-        self.current_device()
-            .is_some_and(|device| self.mirroring_pids.contains_key(&device.serial))
+        self.current_mirroring_process().is_some()
+    }
+
+    pub fn is_using_h264_fallback(&self) -> bool {
+        self.current_mirroring_process()
+            .is_some_and(|process| process.using_h264_fallback)
+    }
+
+    fn current_mirroring_process(&self) -> Option<&MirroringProcess> {
+        self.mirroring_processes.get(&self.current_device()?.serial)
     }
 
     /// 获取当前选中的设备

@@ -31,6 +31,7 @@ mod mvi;
 mod performance_ui;
 mod scrcpy;
 mod scrcpy_parameters;
+mod scrcpy_recovery;
 mod scrcpy_tags;
 mod scrcpy_ui;
 mod ui_bindings;
@@ -458,8 +459,11 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
 
     ui.global::<App>()
         .set_selected_device_index(state.selected_device_idx as i32);
-    ui.global::<App>()
-        .set_current_serial(state.current_serial().into());
+    scrcpy_ui::select_device(
+        ui,
+        state.current_device().map(|device| device.serial.as_str()),
+        app_config::load,
+    );
     ui.global::<App>().set_is_busy(state.is_busy);
     ui.global::<App>()
         .set_status_message(state.status_message.clone().into());
@@ -468,6 +472,8 @@ fn apply_common_state(ui: &AppWindow, state: &AppViewState) {
     ui.global::<App>().set_is_shell_busy(state.is_shell_busy);
     ui.global::<App>().set_active_tab(state.active_tab);
     ui.global::<App>().set_is_mirroring(state.is_mirroring());
+    ui.global::<App>()
+        .set_scrcpy_using_fallback(state.is_using_h264_fallback());
 
     // 2. 更新设备硬件详情（概览与无线页共享）
     apply_device_hardware_to_ui(ui, state);
