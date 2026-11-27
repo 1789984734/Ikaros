@@ -1,7 +1,7 @@
 // 应用全局状态（SSOT）：Rust MVI Store ↔ 各页组件共用的唯一数据通道
 import { DeviceItemData, FileItemData, AppItemData, ScrcpyTagData, JsonFieldItemData } from "types.slint";
 import { LogItemData } from "logcat.slint";
-import { PerformanceMetric, PerformanceChart } from "performance.slint";
+import { PerformanceMetric, PerformanceChart, PerformanceAppOption } from "performance.slint";
 import { LogFilterCompletion } from "log-search.slint";
 import { ScrcpyParameterInfo } from "scrcpy-parameter-help.slint";
 
@@ -91,16 +91,17 @@ export global App {
     in property <bool> performance_has_error;
     in property <string> performance_message;
     in property <string> performance_sample_status;
-    in property <[string]> performance_packages;
-    in property <[string]> performance_package_labels;
-    in-out property <int> performance_selected_index;
+    in property <[PerformanceAppOption]> performance_app_options;
+    in property <int> performance_selected_index;
     in property <string> performance_package;
+    in property <string> performance_package_label;
     in property <string> performance_app_status;
     in property <[PerformanceMetric]> performance_device_metrics;
     in property <[PerformanceMetric]> performance_app_metrics;
     in property <[PerformanceChart]> performance_charts;
     in property <bool> performance_can_export: false;
     callback toggle_performance();
+    pure callback filter_performance_apps([PerformanceAppOption], string) -> [PerformanceAppOption];
     callback select_performance_package(string);
     in-out property <int> active_tab: 0; // 0: 概览, 1: 投屏, 2: 文件, 3: 应用, 4: 日志, 5: 终端, 6: 性能
     callback refresh_devices();

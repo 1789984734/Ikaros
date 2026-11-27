@@ -1,6 +1,6 @@
 import { Button, ScrollView } from "std-widgets.slint";
 import { PerformancePanel } from "performance.slint";
-export { PerformanceMetric, PerformanceChart } from "performance.slint";
+export { PerformanceMetric, PerformanceChart, PerformanceAppOption } from "performance.slint";
 export { LogItemData } from "logcat.slint";
 export { LogFilterCompletion } from "log-search.slint";
 import { StatusIndicator } from "status.slint";
@@ -223,16 +223,17 @@ export component AppWindow inherits Window {
                 has_error: App.performance_has_error;
                 message: App.performance_message;
                 sample_status: App.performance_sample_status;
-                packages: App.performance_packages;
-                package_labels: App.performance_package_labels;
-                selected_index <=> App.performance_selected_index;
+                app_options: App.performance_app_options;
+                selected_index: App.performance_selected_index;
                 package: App.performance_package;
+                package_label: App.performance_package_label;
                 app_status: App.performance_app_status;
                 device_metrics: App.performance_device_metrics;
                 app_metrics: App.performance_app_metrics;
                 charts: App.performance_charts;
                 can_export: App.performance_can_export;
                 toggle => { App.toggle_performance(); }
+                filter_apps(options, query) => { App.filter_performance_apps(options, query) }
                 select_package(package) => { App.select_performance_package(package); }
                 export_csv => { App.export_performance_csv(); }
             }

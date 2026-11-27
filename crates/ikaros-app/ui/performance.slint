@@ -1,4 +1,6 @@
-import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { Button, ScrollView } from "std-widgets.slint";
+import { PerformanceAppOption, PerformanceAppPicker } from "performance-app-picker.slint";
+export { PerformanceAppOption }
 
 export struct PerformanceMetric {
     title: string,
@@ -86,18 +88,17 @@ export component PerformancePanel inherits Rectangle {
     in property <bool> has_error;
     in property <string> message;
     in property <string> sample_status;
-    in property <[string]> packages;
-    in property <[string]> package_labels;
-    in-out property <int> selected_index;
+    in property <[PerformanceAppOption]> app_options;
+    in property <int> selected_index;
     in property <string> package;
+    in property <string> package_label;
     in property <string> app_status;
     in property <[PerformanceMetric]> device_metrics;
     in property <[PerformanceMetric]> app_metrics;
     in property <[PerformanceChart]> charts;
     in property <bool> can_export: false;
-    private property <string> package_draft: root.package;
-    changed package => { root.package_draft = root.package; }
     callback toggle();
+    pure callback filter_apps([PerformanceAppOption], string) -> [PerformanceAppOption];
     callback select_package(string);
     callback export_csv();
 
@@ -111,27 +112,10 @@ export component PerformancePanel inherits Rectangle {
             Button { text: "💾 导出 CSV"; enabled: root.can_export; clicked => { root.export_csv(); } }
             Button { text: root.running ? "暂停监控" : "开始监控"; enabled: root.has_device; clicked => { root.toggle(); } }
         }
-        HorizontalLayout {
-            spacing: 8px;
-            ComboBox {
-                horizontal-stretch: 1;
-                min-width: 0px;
-                preferred-width: 0px;
-                model: root.package_labels;
-                current-index <=> root.selected_index;
-                enabled: root.has_device;
-                selected => { root.select_package(root.packages[self.current-index]); }
-            }
-            LineEdit {
-                horizontal-stretch: 1;
-                min-width: 0px;
-                preferred-width: 0px;
-                text <=> root.package_draft;
-                placeholder-text: "或输入应用包名";
-                enabled: root.has_device;
-                accepted => { root.select_package(self.text); }
-            }
-            Button { text: "监控应用"; enabled: root.has_device; clicked => { root.select_package(root.package_draft); } }
+        // 为置顶渲染的应用选择框预留布局位置，避免下拉浮层被下方图表和滚动容器遮挡
+        picker_slot := Rectangle {
+            height: 34px;
+            horizontal-stretch: 1;
         }
         Text {
             text: root.has_error || !root.has_device ? root.message : root.sample_status;
@@ -161,7 +145,7 @@ export component PerformancePanel inherits Rectangle {
                     border-radius: 8px;
                     background: #202432;
                     Text {
-                        text: "选择上方应用或输入包名，查看 CPU、内存和界面绘制趋势";
+                        text: "在上方选择或搜索应用包名，查看 CPU、内存和界面绘制趋势";
                         color: #818ba5;
                         font-size: 12px;
                         wrap: word-wrap;
@@ -195,5 +179,26 @@ export component PerformancePanel inherits Rectangle {
                 }
             }
         }
+    }
+
+    // 下拉展开时捕获面板外部点击，自动收起浮层
+    if app_picker.dropdown_open: TouchArea {
+        width: parent.width;
+        height: parent.height;
+        clicked => { app_picker.close-dropdown(); }
+    }
+
+    app_picker := PerformanceAppPicker {
+        x: picker_slot.x;
+        y: picker_slot.y;
+        width: picker_slot.width;
+        height: picker_slot.height;
+        enabled: root.has_device;
+        selected_package: root.package;
+        selected_label: root.package_label;
+        selected_index: root.selected_index;
+        options: root.app_options;
+        filter(options, query) => { root.filter_apps(options, query) }
+        select_package(package) => { root.select_package(package); }
     }
 }

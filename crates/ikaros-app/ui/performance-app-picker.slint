@@ -1,0 +1,540 @@
+import { ListView } from "std-widgets.slint";
+
+export struct PerformanceAppOption {
+    package: string,
+    title: string,
+    subtitle: string,
+    is_custom: bool,
+}
+
+export component PerformanceAppPicker inherits Rectangle {
+    in property <bool> enabled: true;
+    in property <string> selected_package;
+    in property <string> selected_label;
+    in property <int> selected_index: 0;
+    in property <[PerformanceAppOption]> options;
+    pure callback filter([PerformanceAppOption], string) -> [PerformanceAppOption];
+    callback select_package(string);
+
+    out property <bool> dropdown_open: root.enabled && root.open;
+
+    private property <bool> open: false;
+    private property <bool> filtering: false;
+    private property <int> highlighted: 0;
+    private property <string> query: "";
+    private property <length> item_height: 32px;
+    private property <length> max_list_height: 256px;
+    private property <length> list_scroll_y: 0px;
+    private property <[PerformanceAppOption]> visible_options:
+        root.filtering ? root.filter(root.options, root.query) : root.options;
+    private property <length> list_height:
+        root.visible_options.length > 0
+            ? min(root.max_list_height, root.visible_options.length * root.item_height)
+            : 44px;
+    private property <bool> show_clear: root.enabled && input.text != "";
+
+    height: 34px;
+    min-width: 0px;
+    preferred-width: 0px;
+    horizontal-stretch: 1;
+    border-radius: 6px;
+    background: root.enabled ? #191b24 : #1d202c;
+    border-width: 1px;
+    border-color: root.dropdown_open || input.has-focus ? #4f80ff : #313548;
+    forward-focus: input;
+
+    pure function display-text() -> string {
+        if root.selected_package == "" {
+            return "";
+        }
+        return root.selected_label != "" ? root.selected_label : root.selected_package;
+    }
+
+    pure function clamped-selected-index() -> int {
+        if root.visible_options.length == 0 {
+            return 0;
+        }
+        return clamp(root.selected_index, 0, root.visible_options.length - 1);
+    }
+
+    function sync-display-text() {
+        input.text = root.display-text();
+        input.scroll-x = 0px;
+    }
+
+    function scroll-highlighted-into-view() {
+        if root.highlighted < 0 || root.highlighted >= root.visible_options.length {
+            root.list_scroll_y = 0px;
+            return;
+        }
+        let item_y = root.highlighted * root.item_height;
+        let view_height = root.list_height;
+        if item_y + root.list_scroll_y < 0px {
+            root.list_scroll_y = -item_y;
+        } else if item_y + root.item_height + root.list_scroll_y > view_height {
+            root.list_scroll_y = view_height - item_y - root.item_height;
+        }
+    }
+
+    public function open-dropdown() {
+        if !root.enabled {
+            return;
+        }
+        root.open = true;
+        root.filtering = false;
+        root.query = "";
+        root.sync-display-text();
+        root.highlighted = root.clamped-selected-index();
+        root.list_scroll_y = 0px;
+        root.scroll-highlighted-into-view();
+        input.focus();
+        input.select-all();
+    }
+
+    public function close-dropdown() {
+        root.open = false;
+        root.filtering = false;
+        root.query = "";
+        root.sync-display-text();
+        input.clear-focus();
+    }
+
+    pure function option-display-text(option: PerformanceAppOption) -> string {
+        if option.package == "" {
+            return "";
+        }
+        if option.subtitle != "" && !option.is_custom {
+            return option.title + " · " + option.subtitle;
+        }
+        return option.package;
+    }
+
+    function commit-option(index: int) {
+        if index < 0 || index >= root.visible_options.length {
+            return;
+        }
+        // 在关闭筛选态之前先读取目标项文本和包名，避免列表恢复全量后索引错位
+        let next_text = root.option-display-text(root.visible_options[index]);
+        let next_package = root.visible_options[index].package;
+        root.open = false;
+        root.filtering = false;
+        root.query = "";
+        input.text = next_text;
+        input.scroll-x = 0px;
+        input.clear-focus();
+        root.select_package(next_package);
+    }
+
+    function clear-input() {
+        if root.filtering {
+            // 正在输入筛选词时，仅清空搜索词并恢复完整下拉列表
+            input.text = "";
+            input.scroll-x = 0px;
+            root.filtering = false;
+            root.query = "";
+            root.highlighted = root.clamped-selected-index();
+            root.list_scroll_y = 0px;
+            root.scroll-highlighted-into-view();
+            input.focus();
+            return;
+        }
+        // 非筛选态点击清除，直接切回“仅查看设备整体”
+        root.open = false;
+        root.filtering = false;
+        root.query = "";
+        input.text = "";
+        input.scroll-x = 0px;
+        input.clear-focus();
+        root.select_package("");
+    }
+
+    changed selected_package => {
+        root.open = false;
+        root.filtering = false;
+        root.query = "";
+        root.sync-display-text();
+    }
+
+    changed selected_label => {
+        if !root.open {
+            root.sync-display-text();
+        }
+    }
+
+    changed enabled => {
+        if !root.enabled {
+            root.open = false;
+            root.filtering = false;
+            root.query = "";
+        }
+    }
+
+    changed visible_options => {
+        if root.filtering {
+            root.highlighted = 0;
+            root.list_scroll_y = 0px;
+        } else {
+            root.highlighted = root.clamped-selected-index();
+        }
+    }
+
+    clip-area := Rectangle {
+        x: 10px;
+        width: max(0px, toggle-button.x - self.x - (root.show_clear ? 32px : 6px));
+        height: parent.height;
+        clip: true;
+
+        Text {
+            width: parent.width;
+            height: parent.height;
+            text: input.text == "" && input.preedit-text == ""
+                ? (root.enabled ? "仅查看设备整体 · 点击选择应用或输入包名筛选" : "请先连接并选择设备")
+                : "";
+            color: root.enabled ? #8b95b0 : #646c84;
+            font-size: 13px;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+
+        ContextMenuArea {
+            width: parent.width;
+            height: parent.height;
+
+            Menu {
+                MenuItem { title: "撤销"; activated => { input.undo(); } }
+                MenuItem { title: "重做"; activated => { input.redo(); } }
+                MenuSeparator { }
+                MenuItem { title: "剪切"; activated => { input.cut(); } }
+                MenuItem { title: "复制"; activated => { input.copy(); } }
+                MenuItem { title: "粘贴"; activated => { input.paste(); } }
+                MenuItem { title: "全选"; activated => { input.select-all(); } }
+            }
+
+            input := TextInput {
+                private property <length> scroll-x: 0px;
+                x: min(0px, max(clip-area.width - self.width - self.text-cursor-width, self.scroll-x));
+                width: max(clip-area.width - self.text-cursor-width, self.preferred-width);
+                height: parent.height;
+                text: root.display-text();
+                enabled: root.enabled;
+                single-line: true;
+                color: root.enabled ? #ffffff : #6c748c;
+                font-size: 13px;
+                vertical-alignment: center;
+                selection-background-color: #3a5285;
+                selection-foreground-color: #ffffff;
+                accessible-label: "选择或筛选监控应用";
+                accessible-placeholder-text: "点击选择应用或输入名称、包名筛选";
+
+                cursor-position-changed(position) => {
+                    if position.x + self.scroll-x < 0px {
+                        self.scroll-x = -position.x;
+                    } else if position.x + self.scroll-x > clip-area.width - self.text-cursor-width {
+                        self.scroll-x = clip-area.width - position.x - self.text-cursor-width;
+                    }
+                }
+
+                changed has-focus => {
+                    if self.has-focus {
+                        if !root.open && root.enabled {
+                            root.open-dropdown();
+                        }
+                    } else if root.open {
+                        root.open = false;
+                        root.filtering = false;
+                        root.query = "";
+                        root.sync-display-text();
+                    }
+                }
+
+                edited => {
+                    root.open = true;
+                    root.filtering = true;
+                    root.query = self.text;
+                    root.highlighted = 0;
+                    root.list_scroll_y = 0px;
+                }
+
+                key-pressed(event) => {
+                    if self.preedit-text != "" {
+                        return reject;
+                    }
+                    if event.text == Key.DownArrow {
+                        if !root.open {
+                            root.open-dropdown();
+                        } else if root.visible_options.length > 0 {
+                            root.highlighted = mod(root.highlighted + 1, root.visible_options.length);
+                            root.scroll-highlighted-into-view();
+                        }
+                        return accept;
+                    }
+                    if event.text == Key.UpArrow {
+                        if !root.open {
+                            root.open-dropdown();
+                        } else if root.visible_options.length > 0 {
+                            root.highlighted = mod(
+                                root.highlighted + root.visible_options.length - 1,
+                                root.visible_options.length
+                            );
+                            root.scroll-highlighted-into-view();
+                        }
+                        return accept;
+                    }
+                    if event.text == Key.Return {
+                        if root.open && root.visible_options.length > 0 {
+                            root.commit-option(root.highlighted);
+                        } else if !root.open {
+                            root.open-dropdown();
+                        }
+                        return accept;
+                    }
+                    if event.text == Key.Escape {
+                        if root.open {
+                            root.close-dropdown();
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    if event.text == Key.Tab && root.open {
+                        root.open = false;
+                        root.filtering = false;
+                        root.query = "";
+                        root.sync-display-text();
+                        return reject;
+                    }
+                    return reject;
+                }
+            }
+
+            // 未展开时拦截左键点击以先展开列表并全选文本，避免 TextInput 按下事件把选区重置为光标点
+            if root.enabled && !root.open: TouchArea {
+                width: parent.width;
+                height: parent.height;
+                mouse-cursor: pointer;
+                clicked => { root.open-dropdown(); }
+            }
+        }
+    }
+
+    if root.show_clear: Rectangle {
+        x: toggle-button.x - self.width - 2px;
+        y: 4px;
+        width: 24px;
+        height: parent.height - 8px;
+        border-radius: 4px;
+        background: clear-touch.has-hover ? #2a3045 : transparent;
+        accessible-role: button;
+        accessible-label: root.filtering ? "清空筛选词" : "清除应用监控，切回设备整体";
+        accessible-action-default => { root.clear-input(); }
+
+        Image {
+            width: 12px;
+            height: 12px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: @image-url("icons/close.svg");
+            colorize: clear-touch.has-hover ? #ffffff : #939bb4;
+            image-fit: contain;
+            accessible-role: none;
+        }
+
+        clear-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clear-input(); }
+        }
+    }
+
+    toggle-button := Rectangle {
+        x: parent.width - self.width - 4px;
+        y: 4px;
+        width: 26px;
+        height: parent.height - 8px;
+        border-radius: 4px;
+        background: root.enabled && toggle-touch.has-hover ? #2a3045 : transparent;
+        accessible-role: button;
+        accessible-label: root.dropdown_open ? "收起应用列表" : "展开应用列表";
+        accessible-enabled: root.enabled;
+        accessible-action-default => {
+            if root.open {
+                root.close-dropdown();
+            } else {
+                root.open-dropdown();
+            }
+        }
+
+        Path {
+            width: 10px;
+            height: 6px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 10;
+            viewbox-height: 6;
+            commands: root.dropdown_open ? "M 1 5 L 5 1 L 9 5" : "M 1 1 L 5 5 L 9 1";
+            fill: transparent;
+            stroke: root.enabled ? (toggle-touch.has-hover ? #ffffff : #939bb4) : #5b637a;
+            stroke-width: 1.5px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            accessible-role: none;
+        }
+
+        toggle-touch := TouchArea {
+            enabled: root.enabled;
+            mouse-cursor: pointer;
+            clicked => {
+                if root.open {
+                    root.close-dropdown();
+                } else {
+                    root.open-dropdown();
+                }
+            }
+        }
+    }
+
+    if root.dropdown_open: Rectangle {
+        x: 0px;
+        y: root.height + 4px;
+        width: root.width;
+        height: root.list_height + 37px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: #414963;
+        background: #242838;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: #00000080;
+        drop-shadow-offset-y: 4px;
+
+        VerticalLayout {
+            padding: 4px;
+            spacing: 2px;
+
+            if root.visible_options.length > 0: ListView {
+                height: root.list_height;
+                content-y <=> root.list_scroll_y;
+                horizontal-scrollbar-policy: always-off;
+
+                for option[index] in root.visible_options: Rectangle {
+                    height: root.item_height;
+                    border-radius: 4px;
+                    background: root.highlighted == index || item-touch.has-hover ? #3a4260 : transparent;
+                    accessible-role: button;
+                    accessible-label: option.subtitle != "" ? option.title + " " + option.subtitle : option.title;
+                    accessible-action-default => { root.commit-option(index); }
+
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 8px;
+
+                        if option.is_custom: Text {
+                            text: option.title;
+                            color: #6ea0ff;
+                            font-size: 12px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+
+                        if !option.is_custom && option.subtitle != "": Text {
+                            text: option.title;
+                            color: #ffffff;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            max-width: root.width * 0.42;
+                            horizontal-stretch: 0;
+                        }
+
+                        if !option.is_custom && option.subtitle != "": Text {
+                            text: "· " + option.subtitle;
+                            color: #8c96b2;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            min-width: 0px;
+                            horizontal-stretch: 1;
+                        }
+
+                        if option.is_custom: Text {
+                            text: option.subtitle;
+                            color: #ffffff;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            min-width: 0px;
+                            horizontal-stretch: 1;
+                        }
+
+                        if !option.is_custom && option.subtitle == "": Text {
+                            text: option.title;
+                            color: option.package == "" ? #d7e1ff : #edf0fa;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            min-width: 0px;
+                            horizontal-stretch: 1;
+                        }
+
+                        if option.package == root.selected_package: Text {
+                            text: "✓";
+                            color: #58d8a8;
+                            font-size: 12px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+                    }
+
+                    item-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.commit-option(index); }
+                    }
+                }
+            }
+
+            if root.visible_options.length == 0: Rectangle {
+                height: 44px;
+                Text {
+                    text: "未找到匹配的应用，可直接输入完整包名";
+                    color: #818ba5;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: #2f354a;
+            }
+
+            HorizontalLayout {
+                height: 22px;
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+
+                Text {
+                    text: root.filtering
+                        ? (root.visible_options.length == 0 ? "无匹配结果" : "匹配 " + root.visible_options.length + " 项")
+                        : "共 " + root.visible_options.length + " 项";
+                    color: #818ba5;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { }
+
+                Text {
+                    text: "↑↓ 选择 · Enter 确认 · Esc 收起";
+                    color: #818ba5;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}
