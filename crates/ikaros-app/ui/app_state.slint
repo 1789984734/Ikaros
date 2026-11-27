@@ -79,6 +79,8 @@ export global App {
     in property <bool> log_recording_has_error: false;
     in property <string> log_recording_directory: "";
     in property <string> log_search_query;
+    in property <int> log_search_sync_rev: 0;
+    in property <[string]> log_filter_history;
     in property <bool> log_show_package: true;
     in property <bool> log_show_tag: true;
     in-out property <int> log_level_selected: 0; // 0: ALL, 1: V, 2: D, 3: I, 4: W, 5: E
@@ -162,6 +164,10 @@ export global App {
     callback clear_logcat_view();
     callback filter_log_level(int);
     callback search_logs(string);
+    callback commit_log_filter(string, bool);
+    callback select_log_filter_history(string);
+    callback remove_log_filter_history(string);
+    callback clear_log_filter_history();
     callback add_log_filter(string, string);
     pure callback complete_log_filter(string, int) -> [LogFilterCompletion];
     callback copy_clipboard(string);

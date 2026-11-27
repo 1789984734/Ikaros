@@ -231,6 +231,18 @@ pub enum AppIntent {
     SetLogLevelFilter(Option<LogLevel>),
     /// 设置关键字搜索
     SetLogSearchQuery(String),
+    /// 立即或在防抖后将筛选条件记录到最近历史
+    CommitLogFilterHistory {
+        generation: Option<u64>,
+        query: String,
+        force: bool,
+    },
+    /// 从下拉历史选择筛选条件并提升到首位
+    SelectLogFilterHistory(String),
+    /// 删除单条最近筛选历史
+    RemoveLogFilterHistory(String),
+    /// 清空全部最近筛选历史
+    ClearLogFilterHistory,
     /// Append a structured filter from a log cell's context menu.
     AddLogFilter {
         field: String,

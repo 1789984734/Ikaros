@@ -1,4 +1,4 @@
-import { Button } from "std-widgets.slint";
+import { ListView } from "std-widgets.slint";
 
 export struct LogFilterCompletion {
     prefix: string,
@@ -9,14 +9,31 @@ export struct LogFilterCompletion {
 
 export component LogSearch inherits Rectangle {
     in property <string> query;
+    in property <int> query-sync-rev: 0;
+    in property <[string]> history;
     callback edited(string);
+    callback commit(string, bool);
+    callback select-history(string);
+    callback remove-history(string);
+    callback clear-history();
     pure callback complete(string, int) -> [LogFilterCompletion];
+
     private property <[LogFilterCompletion]> choices: root.complete(input.text, input.cursor-position-byte-offset);
     private property <int> selected: 0;
-    private property <bool> dismissed: false;
-    private property <bool> showing: input.has-focus && !root.dismissed
+    private property <int> history-highlighted: 0;
+    private property <bool> dismissed: true;
+    private property <bool> history-open: false;
+    private property <length> item-height: 32px;
+    private property <length> max-history-height: 256px;
+    private property <length> history-scroll-y: 0px;
+    private property <length> history-list-height:
+        root.history.length > 0 ? min(root.max-history-height, root.history.length * root.item-height) : 44px;
+    private property <bool> showing-history: root.history-open;
+    private property <bool> showing-completion: !root.showing-history && input.has-focus && !root.dismissed
         && input.preedit-text == "" && input.cursor-position-byte-offset == input.anchor-position-byte-offset
         && root.choices.length > 0;
+    private property <bool> show-clear: input.text != "";
+    out property <bool> dropdown-open: root.showing-history || root.showing-completion;
 
     height: 32px;
     horizontal-stretch: 1;
@@ -24,42 +41,105 @@ export component LogSearch inherits Rectangle {
     border-radius: 6px;
     background: #191b26;
     border-width: 1px;
-    border-color: input.has-focus ? #4f80ff : #33384c;
+    border-color: root.dropdown-open || input.has-focus ? #4f80ff : #33384c;
     forward-focus: input;
+
     changed choices => { root.selected = 0; }
+    changed history => {
+        root.history-highlighted = clamp(root.history-highlighted, 0, max(0, root.history.length - 1));
+    }
+    changed query => {
+        if !input.has-focus && input.text != root.query {
+            input.text = root.query;
+            input.scroll-x = 0px;
+        }
+    }
+    changed query-sync-rev => {
+        if input.text != root.query {
+            input.text = root.query;
+            input.select-all();
+            input.clear-selection();
+            input.scroll-x = 0px;
+        }
+    }
+
+    function scroll-history-into-view() {
+        if root.history-highlighted < 0 || root.history-highlighted >= root.history.length {
+            root.history-scroll-y = 0px;
+            return;
+        }
+        let item_y = root.history-highlighted * root.item-height;
+        let view_height = root.history-list-height;
+        if item_y + root.history-scroll-y < 0px {
+            root.history-scroll-y = -item_y;
+        } else if item_y + root.item-height + root.history-scroll-y > view_height {
+            root.history-scroll-y = view_height - item_y - root.item-height;
+        }
+    }
+
+    public function open-history() {
+        root.history-open = true;
+        root.dismissed = true;
+        root.history-highlighted = 0;
+        root.history-scroll-y = 0px;
+        input.focus();
+    }
+
+    public function close-dropdown() {
+        root.history-open = false;
+        root.dismissed = true;
+        input.clear-focus();
+    }
 
     function apply-completion(index: int) {
         if index >= 0 && index < root.choices.length {
             let choice = root.choices[index];
             input.text = choice.query;
             input.set-selection-offsets(choice.cursor, choice.cursor);
+            root.history-open = false;
             root.dismissed = true;
             root.edited(input.text);
             input.focus();
         }
     }
 
-    clear-button := Button {
-        x: parent.width - self.width - 4px;
-        y: 4px;
-        width: 56px;
-        height: parent.height - 8px;
-        text: "清空";
-        accessible-label: "清空日志过滤条件";
-        enabled: input.text != "";
-        clicked => {
-            input.text = "";
-            input.set-selection-offsets(0, 0);
-            input.scroll-x = 0px;
-            input.focus();
+    function apply-history(index: int) {
+        if index >= 0 && index < root.history.length {
+            input.text = root.history[index];
+            input.select-all();
+            input.clear-selection();
+            root.history-open = false;
             root.dismissed = true;
-            root.edited("");
+            root.select-history(input.text);
+            input.focus();
+        }
+    }
+
+    function remove-history-item(index: int) {
+        if index >= 0 && index < root.history.length {
+            if root.history-highlighted >= root.history.length - 1 {
+                root.history-highlighted = max(0, root.history.length - 2);
+            }
+            root.remove-history(root.history[index]);
+        }
+    }
+
+    function clear-input() {
+        let had_focus = input.has-focus;
+        input.text = "";
+        input.set-selection-offsets(0, 0);
+        input.scroll-x = 0px;
+        root.history-open = false;
+        root.dismissed = true;
+        root.edited("");
+        if had_focus {
+            input.focus();
         }
     }
 
     clip-area := Rectangle {
         x: 10px;
-        width: max(0px, clear-button.x - self.x - 8px);
+        width: max(0px, toggle-button.x - self.x - (root.show-clear ? 32px : 6px));
         height: parent.height;
         clip: true;
 
@@ -72,10 +152,13 @@ export component LogSearch inherits Rectangle {
             font-size: 13px;
             horizontal-alignment: left;
             vertical-alignment: center;
+            overflow: elide;
             accessible-role: none;
         }
 
         ContextMenuArea {
+            width: parent.width;
+            height: parent.height;
             Menu {
                 MenuItem { title: "撤销"; activated => { input.undo(); } }
                 MenuItem { title: "重做"; activated => { input.redo(); } }
@@ -108,37 +191,370 @@ export component LogSearch inherits Rectangle {
                         self.scroll-x = clip-area.width - position.x - self.text-cursor-width;
                     }
                 }
-                changed has-focus => { root.dismissed = !self.has-focus; }
+                changed has-focus => {
+                    if self.has-focus {
+                        if !root.history-open {
+                            root.dismissed = false;
+                            if self.text == "" && root.history.length > 0 {
+                                root.history-open = true;
+                                root.history-highlighted = 0;
+                                root.history-scroll-y = 0px;
+                            }
+                        }
+                    } else {
+                        root.history-open = false;
+                        root.dismissed = true;
+                        root.commit(self.text, false);
+                    }
+                }
                 edited => {
-                    root.dismissed = false;
+                    if self.text == "" && root.history.length > 0 {
+                        root.history-open = true;
+                        root.dismissed = true;
+                        root.history-highlighted = 0;
+                        root.history-scroll-y = 0px;
+                    } else {
+                        root.history-open = false;
+                        root.dismissed = false;
+                    }
                     root.edited(self.text);
                 }
                 key-pressed(event) => {
                     if self.preedit-text != "" { return reject; }
-                    if event.text == Key.DownArrow && root.choices.length > 0 {
-                        root.selected = root.showing ? mod(root.selected + 1, root.choices.length) : 0;
-                        root.dismissed = false;
-                        return accept;
+                    if root.showing-history {
+                        if event.text == Key.DownArrow && root.history.length > 0 {
+                            root.history-highlighted = mod(root.history-highlighted + 1, root.history.length);
+                            root.scroll-history-into-view();
+                            return accept;
+                        }
+                        if event.text == Key.UpArrow && root.history.length > 0 {
+                            root.history-highlighted = mod(
+                                root.history-highlighted + root.history.length - 1,
+                                root.history.length
+                            );
+                            root.scroll-history-into-view();
+                            return accept;
+                        }
+                        if event.text == Key.Return {
+                            if root.history.length > 0 {
+                                root.apply-history(root.history-highlighted);
+                            } else {
+                                root.history-open = false;
+                                root.commit(self.text, true);
+                            }
+                            return accept;
+                        }
+                        if event.text == Key.Escape {
+                            root.history-open = false;
+                            root.dismissed = true;
+                            return accept;
+                        }
+                        if event.text == Key.Tab {
+                            root.history-open = false;
+                            root.dismissed = true;
+                            return reject;
+                        }
+                        return reject;
                     }
-                    if event.text == Key.UpArrow && root.showing {
+                    if event.text == Key.DownArrow {
+                        if self.text != "" && root.choices.length > 0 {
+                            root.selected = root.showing-completion ? mod(root.selected + 1, root.choices.length) : 0;
+                            root.dismissed = false;
+                            return accept;
+                        }
+                        if root.history.length > 0 {
+                            root.open-history();
+                            return accept;
+                        }
+                        if root.choices.length > 0 {
+                            root.selected = root.showing-completion ? mod(root.selected + 1, root.choices.length) : 0;
+                            root.dismissed = false;
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    if event.text == Key.UpArrow && root.showing-completion {
                         root.selected = mod(root.selected + root.choices.length - 1, root.choices.length);
                         return accept;
                     }
-                    if (event.text == Key.Return || event.text == Key.Tab) && root.showing {
+                    if (event.text == Key.Return || event.text == Key.Tab) && root.showing-completion {
                         root.apply-completion(root.selected);
                         return accept;
                     }
-                    if event.text == Key.Escape && root.showing {
+                    if event.text == Key.Return {
+                        root.commit(self.text, true);
+                        return accept;
+                    }
+                    if event.text == Key.Escape && root.showing-completion {
                         root.dismissed = true;
                         return accept;
                     }
                     return reject;
                 }
             }
+
+            if input.text == "" && !root.dropdown-open: TouchArea {
+                width: parent.width;
+                height: parent.height;
+                mouse-cursor: text;
+                clicked => {
+                    if root.history.length > 0 {
+                        root.open-history();
+                    } else {
+                        root.dismissed = false;
+                        input.focus();
+                    }
+                }
+            }
         }
     }
 
-    if root.showing: Rectangle {
+    if root.show-clear: Rectangle {
+        x: toggle-button.x - self.width - 2px;
+        y: 4px;
+        width: 24px;
+        height: parent.height - 8px;
+        border-radius: 4px;
+        background: clear-touch.has-hover ? #2a3045 : transparent;
+        accessible-role: button;
+        accessible-label: "清空日志过滤条件";
+        accessible-action-default => { root.clear-input(); }
+
+        Image {
+            width: 12px;
+            height: 12px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            source: @image-url("icons/close.svg");
+            colorize: clear-touch.has-hover ? #ffffff : #939bb4;
+            image-fit: contain;
+            accessible-role: none;
+        }
+
+        clear-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.clear-input(); }
+        }
+    }
+
+    toggle-button := Rectangle {
+        x: parent.width - self.width - 4px;
+        y: 4px;
+        width: 26px;
+        height: parent.height - 8px;
+        border-radius: 4px;
+        background: toggle-touch.has-hover ? #2a3045 : transparent;
+        accessible-role: button;
+        accessible-label: root.showing-history ? "收起最近筛选" : "展开最近筛选";
+        accessible-action-default => {
+            if root.showing-history {
+                root.close-dropdown();
+            } else {
+                root.open-history();
+            }
+        }
+
+        Path {
+            width: 10px;
+            height: 6px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            viewbox-width: 10;
+            viewbox-height: 6;
+            commands: root.showing-history ? "M 1 5 L 5 1 L 9 5" : "M 1 1 L 5 5 L 9 1";
+            fill: transparent;
+            stroke: toggle-touch.has-hover ? #ffffff : #939bb4;
+            stroke-width: 1.5px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            accessible-role: none;
+        }
+
+        toggle-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => {
+                if root.showing-history {
+                    root.close-dropdown();
+                } else {
+                    root.open-history();
+                }
+            }
+        }
+    }
+
+    if root.showing-history: Rectangle {
+        x: 0px;
+        y: root.height + 4px;
+        width: root.width;
+        height: root.history-list-height + 37px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: #414963;
+        background: #242838;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: #00000080;
+        drop-shadow-offset-y: 4px;
+
+        VerticalLayout {
+            padding: 4px;
+            spacing: 2px;
+
+            if root.history.length > 0: ListView {
+                height: root.history-list-height;
+                content-y <=> root.history-scroll-y;
+                horizontal-scrollbar-policy: always-off;
+
+                for item[index] in root.history: Rectangle {
+                    height: root.item-height;
+                    border-radius: 4px;
+                    background: root.history-highlighted == index || item-touch.has-hover || delete-touch.has-hover
+                        ? #3a4260 : transparent;
+                    accessible-role: button;
+                    accessible-label: "应用最近筛选 " + item;
+                    accessible-action-default => { root.apply-history(index); }
+
+                    item-touch := TouchArea {
+                        x: 0px;
+                        y: 0px;
+                        width: max(0px, delete-btn.x - 4px);
+                        height: parent.height;
+                        mouse-cursor: pointer;
+                        clicked => { root.apply-history(index); }
+                    }
+
+                    HorizontalLayout {
+                        x: 0px;
+                        y: 0px;
+                        width: max(0px, delete-btn.x - 4px);
+                        height: parent.height;
+                        padding-left: 10px;
+                        padding-right: 4px;
+                        spacing: 8px;
+
+                        Text {
+                            text: item;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            color: item == root.query ? #ffffff : #d7e1ff;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            min-width: 0px;
+                            horizontal-stretch: 1;
+                        }
+
+                        if item == root.query: Text {
+                            text: "✓";
+                            color: #58d8a8;
+                            font-size: 12px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            horizontal-stretch: 0;
+                        }
+                    }
+
+                    delete-btn := Rectangle {
+                        x: parent.width - self.width - 6px;
+                        y: (parent.height - self.height) / 2;
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: delete-touch.has-hover ? #593342 : transparent;
+                        accessible-role: button;
+                        accessible-label: "删除最近筛选 " + item;
+                        accessible-action-default => { root.remove-history-item(index); }
+
+                        Image {
+                            width: 11px;
+                            height: 11px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            source: @image-url("icons/close.svg");
+                            colorize: delete-touch.has-hover ? #ff9292 : #818ba5;
+                            image-fit: contain;
+                            accessible-role: none;
+                        }
+
+                        delete-touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.remove-history-item(index); }
+                        }
+                    }
+                }
+            }
+
+            if root.history.length == 0: Rectangle {
+                height: 44px;
+                Text {
+                    text: "暂无最近筛选记录，输入条件后会自动记录";
+                    color: #818ba5;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: #2f354a;
+            }
+
+            HorizontalLayout {
+                height: 22px;
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+
+                Text {
+                    text: root.history.length > 0 ? "最近筛选 · 共 " + root.history.length + " 项" : "最近筛选";
+                    color: #818ba5;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle { }
+
+                Text {
+                    text: "↑↓ 选择 · Enter 应用 · 输入触发补全 · Esc 收起";
+                    color: #818ba5;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                if root.history.length > 0: Rectangle {
+                    width: 34px;
+                    height: 18px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 3px;
+                    background: clear-history-touch.has-hover ? #343b54 : transparent;
+                    accessible-role: button;
+                    accessible-label: "清空全部最近筛选";
+                    accessible-action-default => {
+                        root.history-highlighted = 0;
+                        root.clear-history();
+                    }
+
+                    Text {
+                        text: "清空";
+                        color: clear-history-touch.has-hover ? #ff9292 : #8b95b0;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    clear-history-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => {
+                            root.history-highlighted = 0;
+                            root.clear-history();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.showing-completion: Rectangle {
         x: 0px;
         y: root.height + 4px;
         width: min(root.width, 460px);
@@ -147,6 +563,9 @@ export component LogSearch inherits Rectangle {
         border-width: 1px;
         border-color: #414963;
         background: #242838;
+        drop-shadow-blur: 16px;
+        drop-shadow-color: #00000080;
+        drop-shadow-offset-y: 4px;
         VerticalLayout {
             padding: 4px;
             spacing: 0px;

@@ -129,6 +129,9 @@ impl AppStore {
     }
 
     pub(super) fn on_switch_tab(&mut self, tab: i32) {
+        if self.state.active_tab == 4 && tab != 4 {
+            self.flush_pending_log_filter_history();
+        }
         self.state.active_tab = tab;
         if tab == 6 {
             self.load_performance_packages();

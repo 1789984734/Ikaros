@@ -1,11 +1,16 @@
 use super::{AppIntent, AppStore};
+use crate::mvi::log_query::normalize_history_query;
 use crate::mvi::log_recording;
 use crate::mvi::logcat::stream_log_batches;
 use ikaros_domain::{LogEntry, LogLevel};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::{DISPLAY_LOG_LIMIT, LOG_HISTORY_LIMIT};
+
+pub(super) const LOG_FILTER_HISTORY_LIMIT: usize = 10;
+const LOG_FILTER_HISTORY_DEBOUNCE: Duration = Duration::from_millis(1500);
 
 impl AppStore {
     pub(super) fn stop_logcat_stream(&mut self) {
@@ -143,8 +148,86 @@ impl AppStore {
     }
 
     pub(super) fn on_set_log_search_query(&mut self, query: String) {
-        self.state.log_search_query = query;
+        self.state.log_search_query = query.clone();
         self.recompute_display_logs();
+        self.cancel_log_filter_history_timer();
+
+        if normalize_history_query(&query).is_none() {
+            self.log_filter_dirty = false;
+            return;
+        }
+        self.log_filter_dirty = true;
+        let generation = self.log_filter_history_generation;
+        let tx = self.intent_sender.clone();
+        self.log_filter_history_task = Some(tokio::spawn(async move {
+            tokio::time::sleep(LOG_FILTER_HISTORY_DEBOUNCE).await;
+            let _ = tx.send(AppIntent::CommitLogFilterHistory {
+                generation: Some(generation),
+                query,
+                force: false,
+            });
+        }));
+    }
+
+    pub(super) fn on_commit_log_filter_history(
+        &mut self,
+        generation: Option<u64>,
+        query: String,
+        force: bool,
+    ) {
+        if let Some(expected) = generation {
+            if expected != self.log_filter_history_generation
+                || self.state.log_search_query != query
+            {
+                return;
+            }
+            self.log_filter_history_task = None;
+        } else {
+            self.cancel_log_filter_history_timer();
+            if !force && !self.log_filter_dirty {
+                return;
+            }
+        }
+        self.log_filter_dirty = false;
+        self.record_log_filter_history(&query);
+    }
+
+    pub(super) fn on_select_log_filter_history(&mut self, query: String) {
+        self.cancel_log_filter_history_timer();
+        self.log_filter_dirty = false;
+        self.state.log_search_query = query.clone();
+        self.state.log_search_sync_rev = self.state.log_search_sync_rev.wrapping_add(1);
+        self.recompute_display_logs();
+        self.record_log_filter_history(&query);
+    }
+
+    pub(super) fn on_remove_log_filter_history(&mut self, query: String) {
+        self.cancel_log_filter_history_timer();
+        self.log_filter_dirty = false;
+        let before = self.state.log_filter_history.len();
+        self.state.log_filter_history.retain(|item| item != &query);
+        if self.state.log_filter_history.len() != before {
+            self.persist_log_filter_history();
+        }
+    }
+
+    pub(super) fn on_clear_log_filter_history(&mut self) {
+        self.cancel_log_filter_history_timer();
+        self.log_filter_dirty = false;
+        if !self.state.log_filter_history.is_empty() {
+            self.state.log_filter_history.clear();
+            self.persist_log_filter_history();
+        }
+    }
+
+    pub(super) fn flush_pending_log_filter_history(&mut self) {
+        self.cancel_log_filter_history_timer();
+        if !self.log_filter_dirty {
+            return;
+        }
+        self.log_filter_dirty = false;
+        let query = self.state.log_search_query.clone();
+        self.record_log_filter_history(&query);
     }
 
     pub(super) fn on_add_log_filter(&mut self, field: String, value: String) {
@@ -168,8 +251,46 @@ impl AppStore {
             field,
             &value,
         ) {
-            self.on_set_log_search_query(query);
+            self.cancel_log_filter_history_timer();
+            self.log_filter_dirty = false;
+            self.state.log_search_query = query.clone();
+            self.state.log_search_sync_rev = self.state.log_search_sync_rev.wrapping_add(1);
+            self.recompute_display_logs();
+            self.record_log_filter_history(&query);
         }
+    }
+
+    fn cancel_log_filter_history_timer(&mut self) {
+        if let Some(task) = self.log_filter_history_task.take() {
+            task.abort();
+        }
+        self.log_filter_history_generation = self.log_filter_history_generation.wrapping_add(1);
+    }
+
+    fn record_log_filter_history(&mut self, raw: &str) {
+        let Some(normalized) = normalize_history_query(raw) else {
+            return;
+        };
+        if self.state.log_filter_history.first() == Some(&normalized) {
+            return;
+        }
+        self.state
+            .log_filter_history
+            .retain(|item| item != &normalized);
+        self.state.log_filter_history.insert(0, normalized);
+        self.state
+            .log_filter_history
+            .truncate(LOG_FILTER_HISTORY_LIMIT);
+        self.persist_log_filter_history();
+    }
+
+    fn persist_log_filter_history(&self) {
+        let Some(path) = &self.config_path else {
+            return;
+        };
+        crate::app_config::update_at(path, |config| {
+            config.log_filter_history = self.state.log_filter_history.clone();
+        });
     }
 
     pub(super) fn on_clear_logs(&mut self) {

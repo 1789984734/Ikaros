@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use slint::{Color, ModelRc, VecModel};
+use slint::{Color, Model, ModelRc, VecModel};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -194,7 +194,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         intent_tx.clone(),
         mvi::log_recording_directory(),
         Arc::new(ikaros_usecase::PerformanceUseCases::new(adb_repo.clone())),
-    );
+    )
+    .with_config_path(app_config::config_file_path());
 
     // 4. 初始化 Slint UI 窗口
     #[cfg(target_os = "macos")]
@@ -216,7 +217,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     performance_ui::bind(&app, intent_tx.clone());
     file_ui::bind(&app, intent_tx.clone());
-    log_search_ui::bind(&app);
+    log_search_ui::bind(&app, intent_tx.clone());
     log_selection_ui::bind(&app);
     log_json_ui::bind(&app);
     scrcpy_ui::bind(&app);
@@ -376,6 +377,19 @@ fn apply_logcat_to_ui(ui: &AppWindow, state: &AppViewState) {
         .set_log_recording_directory(state.log_recording_directory.clone().into());
     ui.global::<App>()
         .set_log_search_query(state.log_search_query.clone().into());
+    ui.global::<App>()
+        .set_log_search_sync_rev(state.log_search_sync_rev);
+    let history: Vec<slint::SharedString> =
+        state.log_filter_history.iter().map(Into::into).collect();
+    if !ui
+        .global::<App>()
+        .get_log_filter_history()
+        .iter()
+        .eq(history.iter().cloned())
+    {
+        ui.global::<App>()
+            .set_log_filter_history(ModelRc::from(std::rc::Rc::new(VecModel::from(history))));
+    }
     let query = mvi::log_query::LogQuery::parse(&state.log_search_query);
     ui.global::<App>()
         .set_log_show_package(!query.has_positive_filter(log_filter::Field::Package));

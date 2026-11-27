@@ -69,6 +69,10 @@ pub struct AppStore {
     file_browse_generation: u64,
     file_completion_task: Option<tokio::task::JoinHandle<()>>,
     file_completion_generation: u64,
+    log_filter_history_task: Option<tokio::task::JoinHandle<()>>,
+    log_filter_history_generation: u64,
+    log_filter_dirty: bool,
+    config_path: Option<PathBuf>,
 }
 
 impl AppStore {
@@ -110,7 +114,22 @@ impl AppStore {
             file_browse_generation: 0,
             file_completion_task: None,
             file_completion_generation: 0,
+            log_filter_history_task: None,
+            log_filter_history_generation: 0,
+            log_filter_dirty: false,
+            config_path: None,
         }
+    }
+
+    /// 绑定本地配置文件路径并加载最近筛选历史
+    pub fn with_config_path(mut self, path: Option<PathBuf>) -> Self {
+        if let Some(ref path) = path {
+            let mut history = crate::app_config::load_from(path).log_filter_history;
+            history.truncate(logcat_store::LOG_FILTER_HISTORY_LIMIT);
+            self.state.log_filter_history = history;
+        }
+        self.config_path = path;
+        self
     }
 
     /// 统一接收并分发意图 (Intent)，各领域处理逻辑见对应 *_store 模块
@@ -290,6 +309,16 @@ impl AppStore {
             }
             AppIntent::SetLogLevelFilter(filter) => self.on_set_log_level_filter(filter),
             AppIntent::SetLogSearchQuery(query) => self.on_set_log_search_query(query),
+            AppIntent::CommitLogFilterHistory {
+                generation,
+                query,
+                force,
+            } => {
+                self.on_commit_log_filter_history(generation, query, force);
+            }
+            AppIntent::SelectLogFilterHistory(query) => self.on_select_log_filter_history(query),
+            AppIntent::RemoveLogFilterHistory(query) => self.on_remove_log_filter_history(query),
+            AppIntent::ClearLogFilterHistory => self.on_clear_log_filter_history(),
             AppIntent::AddLogFilter { field, value } => self.on_add_log_filter(field, value),
             AppIntent::ClearLogs => self.on_clear_logs(),
             AppIntent::LogcatCleared {
@@ -307,6 +336,7 @@ impl AppStore {
 mod tests {
     use super::*;
     use ikaros_adb::AdbClient;
+    use std::time::Duration;
 
     fn log_store() -> AppStore {
         let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
@@ -585,5 +615,159 @@ mod tests {
         } else {
             panic!("预期收到未连接设备提示");
         }
+    }
+
+    fn persistent_log_store(
+        config_path: PathBuf,
+    ) -> (AppStore, tokio::sync::mpsc::UnboundedReceiver<AppIntent>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let adb = Arc::new(AdbClient::default());
+        let store = AppStore::new(
+            Arc::new(DeviceUseCases::new(adb.clone())),
+            Arc::new(FileUseCases::new(adb.clone())),
+            Arc::new(AppUseCases::new(adb.clone())),
+            Arc::new(LogcatUseCases::new(adb.clone())),
+            tx,
+            tempfile::tempdir().unwrap().path().join("logcat"),
+            Arc::new(PerformanceUseCases::new(adb)),
+        )
+        .with_config_path(Some(config_path));
+        (store, rx)
+    }
+
+    async fn drain_history_commits(
+        store: &mut AppStore,
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppIntent>,
+    ) {
+        while let Ok(intent) = rx.try_recv() {
+            if matches!(intent, AppIntent::CommitLogFilterHistory { .. }) {
+                store.dispatch(intent).await;
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn log_filter_history_debounces_and_persists_across_restarts() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        let (mut store, mut rx) = persistent_log_store(config_path.clone());
+
+        // 连续输入过程中仅最后一次有效词在 1.5s 后落盘，半截输入与不完整前缀不写入
+        for partial in ["p", "pa", "package:", "package:com.example"] {
+            store
+                .dispatch(AppIntent::SetLogSearchQuery(partial.into()))
+                .await;
+            tokio::time::advance(Duration::from_millis(300)).await;
+            tokio::task::yield_now().await;
+            drain_history_commits(&mut store, &mut rx).await;
+            assert!(store.state.log_filter_history.is_empty());
+        }
+
+        tokio::time::advance(Duration::from_millis(1500)).await;
+        tokio::task::yield_now().await;
+        drain_history_commits(&mut store, &mut rx).await;
+        assert_eq!(store.state.log_filter_history, vec!["package:com.example"]);
+
+        // 1.5s 内清空输入框应取消待落盘历史
+        store
+            .dispatch(AppIntent::SetLogSearchQuery("transient".into()))
+            .await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        store
+            .dispatch(AppIntent::SetLogSearchQuery(String::new()))
+            .await;
+        tokio::time::advance(Duration::from_millis(2000)).await;
+        tokio::task::yield_now().await;
+        drain_history_commits(&mut store, &mut rx).await;
+        assert_eq!(store.state.log_filter_history, vec!["package:com.example"]);
+
+        // 模拟重启：新 Store 应恢复历史且默认不自动回填筛选框
+        let (restarted, _) = persistent_log_store(config_path);
+        assert!(restarted.state.log_search_query.is_empty());
+        assert_eq!(
+            restarted.state.log_filter_history,
+            vec!["package:com.example"]
+        );
+    }
+
+    #[tokio::test]
+    async fn log_filter_history_supports_immediate_commit_context_add_select_remove_and_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.json");
+        let (mut store, _) = persistent_log_store(config_path.clone());
+
+        // 超出上限 10 条时自动淘汰最旧项并去重
+        for i in 1..=12 {
+            store
+                .dispatch(AppIntent::CommitLogFilterHistory {
+                    generation: None,
+                    query: format!("tag:Item{i}"),
+                    force: true,
+                })
+                .await;
+        }
+        assert_eq!(store.state.log_filter_history.len(), 10);
+        assert_eq!(store.state.log_filter_history[0], "tag:Item12");
+        assert_eq!(store.state.log_filter_history[9], "tag:Item3");
+
+        // 下拉选择旧条目应应用筛选、递增同步序号并置顶
+        let sync_before = store.state.log_search_sync_rev;
+        store
+            .dispatch(AppIntent::SelectLogFilterHistory("tag:Item5".into()))
+            .await;
+        assert_eq!(store.state.log_search_query, "tag:Item5");
+        assert_eq!(store.state.log_search_sync_rev, sync_before + 1);
+        assert_eq!(store.state.log_filter_history[0], "tag:Item5");
+
+        // 删除当前输入框对应的历史后，紧随其后的失焦不应把刚删除的条目重新写回
+        store
+            .dispatch(AppIntent::RemoveLogFilterHistory("tag:Item5".into()))
+            .await;
+        assert!(!store
+            .state
+            .log_filter_history
+            .contains(&"tag:Item5".to_string()));
+        store
+            .dispatch(AppIntent::CommitLogFilterHistory {
+                generation: None,
+                query: "tag:Item5".into(),
+                force: false,
+            })
+            .await;
+        assert!(!store
+            .state
+            .log_filter_history
+            .contains(&"tag:Item5".to_string()));
+
+        // 右键菜单添加过滤词（非 level）应立即记录，添加 level 则不影响文本历史
+        store
+            .dispatch(AppIntent::AddLogFilter {
+                field: "tag".into(),
+                value: "Network".into(),
+            })
+            .await;
+        assert_eq!(store.state.log_filter_history[0], "tag:Item5 tag:Network");
+        let history_snapshot = store.state.log_filter_history.clone();
+        store
+            .dispatch(AppIntent::AddLogFilter {
+                field: "level".into(),
+                value: "E".into(),
+            })
+            .await;
+        assert_eq!(store.state.log_filter_history, history_snapshot);
+
+        // 离开 Logcat 标签页时应立即冲刷未落盘的输入
+        store.state.active_tab = 4;
+        store
+            .dispatch(AppIntent::SetLogSearchQuery("switch_tab_query".into()))
+            .await;
+        store.dispatch(AppIntent::SwitchTab(0)).await;
+        assert_eq!(store.state.log_filter_history[0], "switch_tab_query");
+
+        // 清空全部历史并验证重启后仍为空
+        store.dispatch(AppIntent::ClearLogFilterHistory).await;
+        assert!(store.state.log_filter_history.is_empty());
+        let (restarted, _) = persistent_log_store(config_path);
+        assert!(restarted.state.log_filter_history.is_empty());
     }
 }

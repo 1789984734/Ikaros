@@ -75,6 +75,10 @@ pub struct AppViewState {
     pub log_level_filter: Option<LogLevel>,
     /// 关键词搜索过滤
     pub log_search_query: String,
+    /// 外部操作更新筛选词时的同步序号，防止快速输入被回显覆盖
+    pub log_search_sync_rev: i32,
+    /// 最近筛选条件历史（最新在前）
+    pub log_filter_history: Vec<String>,
     /// 是否正在流式接收日志
     pub is_logcat_streaming: bool,
     /// 本地记录开关及后台操作状态，独立于界面的日志筛选。
@@ -113,6 +117,8 @@ impl Default for AppViewState {
             display_logs: Vec::new(),
             log_level_filter: None,
             log_search_query: String::new(),
+            log_search_sync_rev: 0,
+            log_filter_history: Vec::new(),
             is_logcat_streaming: false,
             is_log_recording_enabled: false,
             is_log_recording_busy: true,

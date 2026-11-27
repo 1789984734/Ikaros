@@ -132,6 +132,48 @@ fn field_value(word: &str) -> Option<(Field, bool, &str)> {
     Some((field, excluded, value))
 }
 
+/// 规范化并校验是否可写入最近筛选历史：过滤空白、纯操作符或末尾未填值的字段前缀
+pub(crate) fn normalize_history_query(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed = LogQuery::parse(trimmed);
+    if parsed.terms.is_empty() && parsed.text.is_empty() {
+        return None;
+    }
+    if ends_with_incomplete_token(trimmed) {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn ends_with_incomplete_token(trimmed: &str) -> bool {
+    let mut start = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    for (offset, ch) in trimmed.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if ch == '\\' && quote != Some('\'') {
+            escaped = true;
+        } else if quote == Some(ch) {
+            quote = None;
+        } else if quote.is_none() {
+            if ch == '\'' || ch == '"' {
+                quote = Some(ch);
+            } else if ch.is_whitespace() {
+                start = offset + ch.len_utf8();
+            }
+        }
+    }
+    if quote.is_some() || escaped {
+        return false;
+    }
+    let last = &trimmed[start..];
+    last == "-" || last == "&" || matches!(field_value(last), Some((_, _, "")))
+}
+
 fn contains(value: &str, needle: &str) -> bool {
     value.to_lowercase().contains(needle)
 }
@@ -260,5 +302,39 @@ mod tests {
             LogQuery::append_filter("message:\"unfinished", Field::Package, "com.example").unwrap();
         assert!(shlex::split(&query).is_some());
         assert!(LogQuery::parse(&query).has_positive_filter(Field::Package));
+    }
+
+    #[test]
+    fn history_normalization_rejects_empty_and_incomplete_queries() {
+        for invalid in [
+            "",
+            "   ",
+            "-",
+            "&",
+            "package:",
+            "-tag:",
+            "timeout -",
+            "timeout &",
+            "timeout package:",
+            "package:com.example -message:",
+        ] {
+            assert_eq!(normalize_history_query(invalid), None, "{invalid}");
+        }
+        assert_eq!(
+            normalize_history_query("  package:com.example -tag:Noise  ").as_deref(),
+            Some("package:com.example -tag:Noise")
+        );
+        assert_eq!(
+            normalize_history_query("package: com.example").as_deref(),
+            Some("package: com.example")
+        );
+        assert_eq!(
+            normalize_history_query("message:\"package:\"").as_deref(),
+            Some("message:\"package:\"")
+        );
+        assert_eq!(
+            normalize_history_query("foo-bar").as_deref(),
+            Some("foo-bar")
+        );
     }
 }

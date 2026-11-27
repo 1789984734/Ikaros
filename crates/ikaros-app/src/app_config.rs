@@ -25,6 +25,9 @@ pub struct AppConfig {
     /// 无线连接地址历史（最新在前，最多保留 8 条）
     #[serde(default)]
     pub wireless_history: Vec<String>,
+    /// Logcat 最近筛选条件历史（最新在前，最多保留 10 条）
+    #[serde(default)]
+    pub log_filter_history: Vec<String>,
 }
 
 impl AppConfig {
@@ -39,7 +42,7 @@ impl AppConfig {
     }
 }
 
-fn config_file_path() -> Option<PathBuf> {
+pub(crate) fn config_file_path() -> Option<PathBuf> {
     let base = if cfg!(target_os = "macos") {
         std::env::var_os("HOME")
             .map(|home| PathBuf::from(home).join("Library/Application Support/Ikaros"))
@@ -126,6 +129,7 @@ mod tests {
             )]),
             default_download_dir: Some("/Users/demo/Downloads".into()),
             wireless_history: vec!["192.168.1.8:5555".into()],
+            log_filter_history: vec!["package:com.example -tag:Noise".into()],
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: AppConfig = serde_json::from_str(&json).unwrap();
@@ -160,7 +164,7 @@ mod tests {
         assert_eq!(load_from(&path), AppConfig::default());
 
         let config = AppConfig {
-            wireless_history: vec!["192.168.1.8:5555".into()],
+            log_filter_history: vec!["tag:Network".into(), "timeout".into()],
             ..AppConfig::default()
         };
         update_at(&path, |current| *current = config.clone());
